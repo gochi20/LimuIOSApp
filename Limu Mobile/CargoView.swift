@@ -1,0 +1,328 @@
+import SwiftUI
+
+struct CargoView: View {
+    @EnvironmentObject private var appState: AppState
+    private enum Screen { case list, detail, package, payment }
+
+    @State private var screen: Screen = .list
+    @State private var selectedCargo: Cargo?
+    @State private var selectedPackage: CargoPackage?
+    @State private var packages: [CargoPackage] = []
+    @State private var timeline: [TimelineEvent] = []
+    @State private var filter = "All"
+    @State private var search = ""
+
+    private let filters = ["All", "Active", "Ready for Collection", "Collected", "Payment Pending"]
+
+    private var filteredCargo: [Cargo] {
+        appState.cargo.filter { cargo in
+            let filterMatches: Bool = switch filter {
+            case "Active": ["In Warehouse", "In Transit", "Loading"].contains(cargo.status)
+            case "Ready for Collection": cargo.readyForCollection
+            case "Collected": cargo.status == "Collected"
+            case "Payment Pending": cargo.financeStatus == "Payment Pending"
+            default: true
+            }
+            let searchMatches = search.isEmpty || cargo.id.localizedCaseInsensitiveContains(search) || cargo.summary.localizedCaseInsensitiveContains(search)
+            return filterMatches && searchMatches
+        }
+    }
+
+    var body: some View {
+        Group {
+            switch screen {
+            case .list: listView
+            case .detail:
+                if let selectedCargo {
+                    CargoDetailView(cargo: selectedCargo, packages: packages, timelineEvents: timeline, onBack: { screen = .list }, onPackage: { selectedPackage = $0; screen = .package }, onPayment: { screen = .payment })
+                }
+            case .package:
+                if let selectedPackage { PackageDetailView(package: selectedPackage) { screen = .detail } }
+            case .payment:
+                if let selectedCargo, let invoice = appState.invoices.first(where: { $0.apiID == selectedCargo.invoiceAPIID || $0.cargoID == selectedCargo.id }) {
+                    PaymentUploadView(invoice: invoice) { screen = .detail }
+                } else if let selectedCargo {
+                    CargoDetailView(cargo: selectedCargo, packages: packages, timelineEvents: timeline, onBack: { screen = .list }, onPackage: { _ in }, onPayment: {})
+                }
+            }
+        }
+    }
+
+    private var listView: some View {
+        VStack(spacing: 0) {
+            AppHeader {
+                Text("My Cargo")
+                    .font(.limu(size: 18, weight: .bold))
+                    .padding(.bottom, 12)
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.limu(size: 14))
+                        .foregroundStyle(LimuColors.muted)
+                    TextField("Search tracking number…", text: $search)
+                        .font(.limu(size: 13))
+                        .foregroundStyle(.white)
+                        .textInputAutocapitalization(.never)
+                }
+                .padding(.horizontal, 12)
+                .frame(height: 40)
+                .background(.white.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            FilterStrip(items: filters, selection: $filter)
+            ScrollView {
+                LazyVStack(spacing: 10) {
+                    if filteredCargo.isEmpty {
+                        VStack(spacing: 12) {
+                            BrandEmptyStateIcon(systemName: "shippingbox")
+                            Text("No cargo matches this filter.")
+                                .font(.limu(size: 14, weight: .semibold))
+                                .foregroundStyle(LimuColors.muted)
+                        }
+                        .padding(.vertical, 40)
+                    } else {
+                        ForEach(filteredCargo) { cargo in
+                            Button {
+                                selectedCargo = cargo
+                                screen = .detail
+                                Task {
+                                    do {
+                                        let detail = try await appState.fetchCargoDetail(cargo.apiID)
+                                        selectedCargo = detail.0
+                                        packages = detail.1
+                                        timeline = detail.2
+                                    } catch {
+                                        appState.errorMessage = error.localizedDescription
+                                    }
+                                }
+                            } label: {
+                                cargoCard(cargo)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .padding(16)
+            }
+        }
+        .background(LimuColors.cream)
+    }
+
+    private func cargoCard(_ cargo: Cargo) -> some View {
+        LimuCard(padding: 16) {
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(cargo.id).font(.limu(size: 14, weight: .bold)).foregroundStyle(LimuColors.ink)
+                    Text(cargo.summary).font(.limu(size: 12)).foregroundStyle(LimuColors.secondary)
+                }
+                Spacer()
+                StatusBadge(status: cargo.status)
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 12) {
+                    IconText(icon: "mappin", text: cargo.location)
+                    IconText(icon: "shippingbox", text: "\(cargo.packages) packages")
+                }
+                IconText(icon: "scalemass", text: "\(cargo.weight.formatted()) kg · \(cargo.volume.formatted()) CBM")
+            }
+            .padding(.vertical, 10)
+            HStack {
+                Text(cargo.shipmentName).font(.limu(size: 11)).foregroundStyle(LimuColors.muted)
+                Spacer()
+                StatusBadge(status: cargo.financeStatus)
+            }
+            .padding(.top, 8)
+            .overlay(alignment: .top) { Rectangle().fill(LimuColors.softCream).frame(height: 1) }
+            if let location = cargo.collectionLocation, cargo.readyForCollection {
+                Label("Ready at \(location)", systemImage: "mappin.and.ellipse")
+                    .font(.limu(size: 11, weight: .semibold))
+                    .foregroundStyle(LimuColors.success)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(LimuColors.successWash)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay { RoundedRectangle(cornerRadius: 8).stroke(Color(hex: "86EFAC")) }
+                    .padding(.top, 8)
+            }
+        }
+    }
+}
+
+private struct CargoDetailView: View {
+    let cargo: Cargo
+    let packages: [CargoPackage]
+    let timelineEvents: [TimelineEvent]
+    let onBack: () -> Void
+    let onPackage: (CargoPackage) -> Void
+    let onPayment: () -> Void
+    @State private var tab = "Overview"
+
+    var body: some View {
+        VStack(spacing: 0) {
+            BackHeader(backTitle: "Cargo", title: cargo.id, subtitle: cargo.summary, status: cargo.status, onBack: onBack)
+            SegmentedTabs(items: ["Overview", "Timeline", "Packages"], selection: $tab)
+            ScrollView {
+                Group {
+                    switch tab {
+                    case "Timeline": timeline
+                    case "Packages": packagesView
+                    default: overview
+                    }
+                }
+                .padding(16)
+            }
+        }
+        .background(LimuColors.cream)
+    }
+
+    private var overview: some View {
+        VStack(spacing: 12) {
+            SectionCard("Cargo Summary") {
+                DetailRow(label: "Tracking #", value: cargo.id, monospaced: true)
+                DetailRow(label: "Location", value: cargo.location)
+                DetailRow(label: "Packages", value: "\(cargo.packages) (\(cargo.checkedPackages) checked)")
+                DetailRow(label: "Weight", value: "\(cargo.weight.formatted()) kg")
+                DetailRow(label: "Volume", value: "\(cargo.volume.formatted()) CBM")
+                DetailRow(label: "Shipment", value: cargo.shipmentName)
+                DetailRow(label: "Created", value: cargo.createdAt)
+            }
+            SectionCard("Finance & Payment") {
+                HStack {
+                    Text("Payment Status").font(.limu(size: 13)).foregroundStyle(Color(hex: "374151"))
+                    Spacer()
+                    StatusBadge(status: cargo.financeStatus, medium: true)
+                }
+                if cargo.financeStatus == "Payment Pending" {
+                    PrimaryButton(title: "Upload Payment Proof", action: onPayment)
+                        .padding(.top, 12)
+                } else if cargo.financeStatus == "Approved" {
+                    Label("Payment confirmed and approved", systemImage: "checkmark.circle.fill")
+                        .font(.limu(size: 12, weight: .semibold))
+                        .foregroundStyle(LimuColors.success)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .background(LimuColors.successWash)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .padding(.top, 12)
+                }
+            }
+            if let location = cargo.collectionLocation, cargo.readyForCollection {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label("Ready for Collection", systemImage: "checkmark.circle.fill")
+                        .font(.limu(size: 13, weight: .bold)).foregroundStyle(LimuColors.success)
+                    Text(location).font(.limu(size: 12)).foregroundStyle(Color(hex: "374151"))
+                    Text("Bring your ID and tracking number").font(.limu(size: 11)).foregroundStyle(LimuColors.secondary)
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(LimuColors.successWash)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .overlay { RoundedRectangle(cornerRadius: 14).stroke(Color(hex: "86EFAC"), lineWidth: 1.5) }
+            }
+            if let notes = cargo.notes {
+                SectionCard("Notes") {
+                    Text(notes).font(.limu(size: 13)).foregroundStyle(Color(hex: "374151")).lineSpacing(3)
+                }
+            }
+        }
+    }
+
+    private var timeline: some View {
+        LimuCard {
+            VStack(spacing: 0) {
+                ForEach(Array(timelineEvents.enumerated()), id: \.element.id) { index, event in
+                    HStack(alignment: .top, spacing: 12) {
+                        VStack(spacing: 4) {
+                            Circle().fill(index == 0 ? LimuColors.copper : LimuColors.divider).frame(width: 10, height: 10).padding(.top, 3)
+                            if index < timelineEvents.count - 1 {
+                                Rectangle().fill(LimuColors.peach).frame(width: 2, height: 54)
+                            }
+                        }
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(event.title).font(.limu(size: 13, weight: .bold)).foregroundStyle(LimuColors.ink)
+                            Text(event.description).font(.limu(size: 12)).foregroundStyle(LimuColors.secondary)
+                            Text("\(event.timestamp) · \(event.actor)").font(.limu(size: 11)).foregroundStyle(LimuColors.muted)
+                        }
+                        Spacer()
+                    }
+                }
+            }
+        }
+    }
+
+    private var packagesView: some View {
+        VStack(spacing: 10) {
+            ForEach(packages) { package in
+                Button { onPackage(package) } label: {
+                    LimuCard(padding: 14) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(package.content).font(.limu(size: 13, weight: .bold)).foregroundStyle(LimuColors.ink)
+                                Text("\(package.code) · \(package.type)").font(.limu(size: 11)).foregroundStyle(LimuColors.secondary)
+                            }
+                            Spacer()
+                            Text("\(package.checked)/\(package.total)")
+                                .font(.limu(size: 11, weight: .bold)).foregroundStyle(LimuColors.success)
+                                .padding(.horizontal, 8).padding(.vertical, 5).background(LimuColors.successWash).clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
+                        HStack(spacing: 12) {
+                            IconText(icon: "number", text: "Qty: \(package.quantity)")
+                            IconText(icon: "mail", text: package.courierTracking)
+                        }
+                        .padding(.vertical, 10)
+                        Text("CHECKED PROGRESS").font(.limu(size: 10, weight: .semibold)).foregroundStyle(LimuColors.muted)
+                        ProgressView(value: Double(package.checked), total: Double(package.total)).tint(Color(hex: "22C55E"))
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
+private struct PackageDetailView: View {
+    let package: CargoPackage
+    let onBack: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            BackHeader(backTitle: "Packages", title: package.content, subtitle: package.code, onBack: onBack)
+            ScrollView {
+                VStack(spacing: 12) {
+                    SectionCard("Package Info") {
+                        DetailRow(label: "Package Code", value: package.code, monospaced: true)
+                        DetailRow(label: "Package Type", value: package.type)
+                        DetailRow(label: "Quantity", value: "\(package.quantity)")
+                        DetailRow(label: "Courier Tracking", value: package.courierTracking, monospaced: true)
+                        DetailRow(label: "Checked At", value: package.checkedAt)
+                    }
+                    SectionCard("Unit Progress") {
+                        HStack {
+                            Text("Units Verified").font(.limu(size: 13)).foregroundStyle(Color(hex: "374151"))
+                            Spacer()
+                            Text("\(package.checked) / \(package.total)").font(.limu(size: 15, weight: .heavy)).foregroundStyle(LimuColors.success)
+                        }
+                        ProgressView(value: Double(package.checked), total: Double(package.total))
+                            .tint(Color(hex: "22C55E"))
+                            .padding(.top, 10)
+                    }
+                    SectionCard("Stage Progress") {
+                        ForEach(Array(["Container Loading", "Offloading", "Loading Check", "Warehouse Check"].enumerated()), id: \.offset) { index, stage in
+                            HStack(spacing: 12) {
+                                Image(systemName: index < 3 ? "checkmark.circle.fill" : "circle")
+                                    .font(.limu(size: 22))
+                                    .foregroundStyle(index < 3 ? LimuColors.copper : LimuColors.muted)
+                                Text(stage).font(.limu(size: 13, weight: index < 3 ? .semibold : .regular)).foregroundStyle(index < 3 ? LimuColors.ink : LimuColors.muted)
+                                Spacer()
+                            }
+                            .padding(.bottom, index < 3 ? 14 : 0)
+                        }
+                    }
+                }
+                .padding(16)
+            }
+        }
+        .background(LimuColors.cream)
+    }
+}
