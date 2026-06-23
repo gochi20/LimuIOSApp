@@ -44,6 +44,16 @@ struct ContentView: View {
             guard let url = activity.webpageURL else { return }
             handleDeepLink(url)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .limuDidRegisterForRemoteNotifications)) { notification in
+            guard let token = notification.userInfo?["token"] as? String else { return }
+            Task { await appState.savePushToken(token) }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .limuRemoteNotificationReceived)) { _ in
+            Task { await appState.refreshAfterRemoteNotification() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .limuRemoteNotificationTapped)) { notification in
+            handleRemoteNotificationTap(notification)
+        }
         .alert("Limu", isPresented: Binding(
             get: { appState.errorMessage != nil },
             set: { if !$0 { appState.errorMessage = nil } }
@@ -73,18 +83,10 @@ struct ContentView: View {
                         )
                     }
                     Tab("Cargo", systemImage: AppTab.cargo.icon, value: AppTab.cargo) {
-                        if appState.hasCompletedKYC {
-                            CargoView()
-                        } else {
-                            KYCRestrictedView(feature: "Cargo", onCompleteKYC: openKYC)
-                        }
+                        CargoView()
                     }
                     Tab("Shipments", systemImage: AppTab.shipments.icon, value: AppTab.shipments) {
-                        if appState.hasCompletedKYC {
-                            ShipmentsView()
-                        } else {
-                            KYCRestrictedView(feature: "Shipments", onCompleteKYC: openKYC)
-                        }
+                        ShipmentsView()
                     }
                     Tab("Invoices", systemImage: AppTab.invoices.icon, value: AppTab.invoices) {
                         InvoicesView()
@@ -115,11 +117,7 @@ struct ContentView: View {
 
     private func navigate(_ tab: AppTab) {
         showingNotifications = false
-        if tab.requiresCompletedKYC && !appState.hasCompletedKYC {
-            openKYC()
-        } else {
-            selectedTab = tab
-        }
+        selectedTab = tab
     }
 
     private func openKYC() {
@@ -134,6 +132,38 @@ struct ContentView: View {
         selectedTab = .home
         appState.beginPasswordResetFromLink()
         passwordResetToken = token
+    }
+
+    private func handleRemoteNotificationTap(_ notification: Notification) {
+        Task { await appState.refreshAfterRemoteNotification() }
+        guard appState.isAuthenticated else { return }
+        if let destination = Self.notificationDestination(from: notification) {
+            navigate(destination)
+        } else {
+            showingNotifications = true
+        }
+    }
+
+    private static func notificationDestination(from notification: Notification) -> AppTab? {
+        guard let userInfo = notification.userInfo else { return nil }
+        let rawDestination = (userInfo["destination"] as? String)
+            ?? (userInfo["tab"] as? String)
+            ?? (userInfo["objectType"] as? String)
+        guard let rawDestination else { return nil }
+        switch rawDestination.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "cargo":
+            return .cargo
+        case "shipment", "shipments":
+            return .shipments
+        case "invoice", "invoices", "payment":
+            return .invoices
+        case "profile", "kyc":
+            return .profile
+        case "home", "notifications":
+            return .home
+        default:
+            return nil
+        }
     }
 
     private static func passwordResetToken(from url: URL) -> String? {

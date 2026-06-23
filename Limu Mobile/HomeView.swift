@@ -9,24 +9,25 @@ struct HomeView: View {
 
     private var activeCargo: [Cargo] { appState.cargo.filter { !["Collected", "Completed"].contains($0.status) } }
     private var pendingBalance: Double { appState.invoices.filter { $0.status != "Paid" }.reduce(0) { $0 + $1.balance } }
+    private var defaultCurrency: String {
+        LimuCurrency.code(appState.dashboard?.metrics.currency ?? appState.invoices.first?.currency)
+    }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
                 hero
-                if appState.hasCompletedKYC {
-                    metrics
-                    homeSection("Active Cargo", seeAll: { onNavigate(.cargo) }) {
-                        ForEach(activeCargo) { cargo in
-                            Button { onNavigate(.cargo) } label: { cargoPreview(cargo) }
-                                .buttonStyle(.plain)
-                        }
+                metrics
+                homeSection("Active Cargo", seeAll: { onNavigate(.cargo) }) {
+                    ForEach(activeCargo) { cargo in
+                        Button { onNavigate(.cargo) } label: { cargoPreview(cargo) }
+                            .buttonStyle(.plain)
                     }
-                    if let shipment = appState.shipments.first(where: { $0.status == "In Transit" }) ?? appState.shipments.first {
-                        homeSection("Shipment Update", seeAll: { onNavigate(.shipments) }) {
-                            Button { onNavigate(.shipments) } label: { shipmentPreview(shipment) }
-                                .buttonStyle(.plain)
-                        }
+                }
+                if let shipment = appState.shipments.first(where: { $0.status == "In Transit" }) ?? appState.shipments.first {
+                    homeSection("Shipment Update", seeAll: { onNavigate(.shipments) }) {
+                        Button { onNavigate(.shipments) } label: { shipmentPreview(shipment) }
+                            .buttonStyle(.plain)
                     }
                 }
                 homeSection("Invoices", seeAll: { onNavigate(.invoices) }) {
@@ -91,7 +92,7 @@ struct HomeView: View {
         HStack(spacing: 10) {
             metricCard(icon: "shippingbox.fill", tint: LimuColors.copperWash, value: "\(appState.dashboard?.metrics.activeCargoCount ?? activeCargo.count)", label: "Active Cargo") { onNavigate(.cargo) }
             metricCard(icon: "storefront.fill", tint: LimuColors.successWash, value: "\(appState.dashboard?.metrics.readyForCollectionCount ?? appState.cargo.filter(\.readyForCollection).count)", label: "For Collection") { onNavigate(.cargo) }
-            metricCard(icon: "creditcard.fill", tint: LimuColors.dangerWash, value: MockData.money(pendingBalance), label: "Balance Due") { onNavigate(.invoices) }
+            metricCard(icon: "creditcard.fill", tint: LimuColors.dangerWash, value: MockData.money(pendingBalance, currency: defaultCurrency), label: "Balance Due") { onNavigate(.invoices) }
         }
         .padding(.horizontal, 16)
         .offset(y: -14)
@@ -216,7 +217,7 @@ struct HomeView: View {
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 4) {
-                    Text(MockData.money(invoice.balance))
+                    Text(MockData.money(invoice.balance, currency: invoice.currency))
                         .font(.limu(size: 15, weight: .bold))
                         .foregroundStyle(invoice.balance > 0 ? LimuColors.danger : LimuColors.success)
                     StatusBadge(status: invoice.status)

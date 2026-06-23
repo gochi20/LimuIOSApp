@@ -88,7 +88,7 @@ enum AppTab: String, CaseIterable {
     }
 
     var requiresCompletedKYC: Bool {
-        self == .cargo || self == .shipments
+        false
     }
 }
 

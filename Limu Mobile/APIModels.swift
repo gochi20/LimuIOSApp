@@ -58,7 +58,7 @@ struct DashboardMetricsDTO: Decodable {
     let activeCargoCount: Int
     let readyForCollectionCount: Int
     let balanceDue: Double
-    let currency: String
+    let currency: String?
     let unreadNotificationCount: Int
     let kycStatus: String
 }
@@ -112,7 +112,7 @@ struct CargoInvoiceDTO: Decodable {
     let status: String
     let total: Double
     let balance: Double
-    let currency: String
+    let currency: String?
 }
 
 struct CargoPackageDTO: Decodable {
@@ -207,7 +207,7 @@ struct InvoiceDTO: Decodable {
     let total: Double
     let balance: Double
     let discount: Double
-    let currency: String
+    let currency: String?
     let shipmentId: Int?
     let shipmentName: String
     let cargoId: Int?
@@ -229,7 +229,7 @@ struct InvoiceDTO: Decodable {
             discountPercentage: percentage,
             shipmentID: shipmentName.isEmpty ? shipmentId.map { "SHP-\($0)" } ?? "—" : shipmentName,
             cargoID: trackingNumber.isEmpty ? cargoId.map { "CGO-\($0)" } ?? "—" : trackingNumber,
-            currency: currency,
+            currency: LimuCurrency.code(currency),
             items: (items ?? []).map(\.model),
             payments: (payments ?? []).map(\.model),
             documentURL: documentUrl.flatMap(URL.init(string:))
@@ -251,7 +251,7 @@ struct PaymentDTO: Decodable {
     let id: Int
     let invoiceId: Int
     let amount: Double
-    let currency: String
+    let currency: String?
     let status: String
     let rawStatus: String
     let proofUrl: String?
@@ -261,7 +261,7 @@ struct PaymentDTO: Decodable {
     let notes: String?
 
     var model: Payment {
-        Payment(id: String(id), amount: amount, status: status, date: paymentDate ?? "—", transactionID: transactionId)
+        Payment(id: String(id), amount: amount, status: status, date: paymentDate ?? "—", transactionID: transactionId, currency: LimuCurrency.code(currency))
     }
 }
 

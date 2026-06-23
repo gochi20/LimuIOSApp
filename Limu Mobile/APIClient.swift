@@ -16,8 +16,24 @@ struct APIError: LocalizedError {
     let fields: [String: String]
 
     var errorDescription: String? {
+        if let mappedMessage = userFacingMessage {
+            return mappedMessage
+        }
         if let first = fields.values.first { return first }
         return message
+    }
+
+    private var userFacingMessage: String? {
+        switch code {
+        case "INVALID_CREDENTIALS":
+            return "The email, phone, or password you entered is incorrect. Please try again."
+        case "ACCOUNT_TEMPORARILY_LOCKED":
+            return "Too many failed sign-in attempts. Please wait a few minutes and try again."
+        case "RATE_LIMITED":
+            return "Too many attempts. Please wait a few minutes before trying again."
+        default:
+            return nil
+        }
     }
 }
 

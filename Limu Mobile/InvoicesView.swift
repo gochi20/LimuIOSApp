@@ -12,6 +12,9 @@ struct InvoicesView: View {
 
     private var filtered: [Invoice] { appState.invoices.filter { filter == "All" || $0.status == filter } }
     private var outstanding: Double { appState.invoices.filter { $0.status != "Paid" }.reduce(0) { $0 + $1.balance } }
+    private var defaultCurrency: String {
+        LimuCurrency.code(appState.dashboard?.metrics.currency ?? appState.invoices.first?.currency)
+    }
 
     var body: some View {
         switch screen {
@@ -30,7 +33,7 @@ struct InvoicesView: View {
                     .font(.limu(size: 18, weight: .bold))
                 HStack(spacing: 3) {
                     Text("Total Outstanding:")
-                    Text(MockData.money(outstanding)).fontWeight(.bold).foregroundStyle(LimuColors.copper)
+                    Text(MockData.money(outstanding, currency: defaultCurrency)).fontWeight(.bold).foregroundStyle(LimuColors.copper)
                 }
                 .font(.limu(size: 12))
                 .foregroundStyle(LimuColors.peach)
@@ -81,12 +84,12 @@ struct InvoicesView: View {
             HStack(alignment: .bottom) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Total").font(.limu(size: 11)).foregroundStyle(LimuColors.muted)
-                    Text(MockData.money(invoice.total)).font(.limu(size: 13, weight: .bold)).foregroundStyle(Color(hex: "374151"))
+                    Text(MockData.money(invoice.total, currency: invoice.currency)).font(.limu(size: 13, weight: .bold)).foregroundStyle(Color(hex: "374151"))
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("Balance Due").font(.limu(size: 11)).foregroundStyle(LimuColors.muted)
-                    Text(MockData.money(invoice.balance))
+                    Text(MockData.money(invoice.balance, currency: invoice.currency))
                         .font(.limu(size: 16, weight: .heavy))
                         .foregroundStyle(invoice.balance > 0 ? LimuColors.danger : LimuColors.success)
                 }
@@ -123,12 +126,11 @@ private struct InvoiceDetailView: View {
                             .font(.limu(size: 11, weight: .bold)).tracking(0.6)
                             .foregroundStyle(invoice.balance > 0 ? Color(hex: "482A28") : LimuColors.success)
                         HStack(alignment: .firstTextBaseline, spacing: 4) {
-                            Text(MockData.money(invoice.balance))
+                            Text(MockData.money(invoice.balance, currency: invoice.currency))
                                 .font(.limu(size: 28, weight: .heavy))
-                            Text(invoice.currency).font(.limu(size: 14))
                         }
                         .foregroundStyle(invoice.balance > 0 ? LimuColors.copper : LimuColors.success)
-                        Text("Invoice Total: \(MockData.money(invoice.total))")
+                        Text("Invoice Total: \(MockData.money(invoice.total, currency: invoice.currency))")
                             .font(.limu(size: 12)).foregroundStyle(LimuColors.secondary)
                     }
                     .padding(16)
@@ -147,7 +149,7 @@ private struct InvoiceDetailView: View {
                                     if item.quantity > 1 { Text("× \(item.quantity)").font(.limu(size: 11)).foregroundStyle(LimuColors.muted) }
                                 }
                                 Spacer()
-                                Text(MockData.money(item.total))
+                                Text(MockData.money(item.total, currency: invoice.currency))
                                     .font(.limu(size: 13, weight: .bold))
                                     .foregroundStyle(item.total < 0 ? LimuColors.success : LimuColors.ink)
                             }
@@ -157,7 +159,7 @@ private struct InvoiceDetailView: View {
                         HStack {
                             Text("Total").font(.limu(size: 14, weight: .bold))
                             Spacer()
-                            Text("\(MockData.money(invoice.total)) \(invoice.currency)").font(.limu(size: 14, weight: .heavy))
+                            Text(MockData.money(invoice.total, currency: invoice.currency)).font(.limu(size: 14, weight: .heavy))
                         }
                         .foregroundStyle(LimuColors.ink)
                         .padding(.top, 12)
@@ -168,7 +170,7 @@ private struct InvoiceDetailView: View {
                         DetailRow(label: "Cargo", value: invoice.cargoID)
                         DetailRow(label: "Shipment", value: invoice.shipmentID)
                         if invoice.discount > 0 {
-                            DetailRow(label: "Discount", value: "\(invoice.discountPercentage)% (\(MockData.money(invoice.discount)))")
+                            DetailRow(label: "Discount", value: "\(invoice.discountPercentage)% (\(MockData.money(invoice.discount, currency: invoice.currency)))")
                         }
                     }
 
@@ -189,7 +191,7 @@ private struct InvoiceDetailView: View {
                             ForEach(invoice.payments) { payment in
                                 HStack {
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(MockData.money(payment.amount)).font(.limu(size: 13, weight: .bold)).foregroundStyle(LimuColors.ink)
+                                        Text(MockData.money(payment.amount, currency: payment.currency)).font(.limu(size: 13, weight: .bold)).foregroundStyle(LimuColors.ink)
                                         Text("\(payment.date) · \(payment.transactionID)").font(.limu(size: 11)).foregroundStyle(LimuColors.secondary)
                                     }
                                     Spacer()
@@ -247,7 +249,7 @@ struct PaymentUploadView: View {
 
     private var formView: some View {
         VStack(spacing: 14) {
-            Text("Invoice: \(invoice.id) · Balance: \(MockData.money(invoice.balance))")
+            Text("Invoice: \(invoice.id) · Balance: \(MockData.money(invoice.balance, currency: invoice.currency))")
                 .font(.limu(size: 12))
                 .foregroundStyle(Color(hex: "482A28"))
                 .padding(.horizontal, 14)
@@ -256,7 +258,7 @@ struct PaymentUploadView: View {
                 .background(LimuColors.copperWash)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay { RoundedRectangle(cornerRadius: 10).stroke(LimuColors.peach) }
-            LimuTextField(label: "Amount Paid (USD)", placeholder: "0.00", text: $amount, keyboard: .decimalPad)
+            LimuTextField(label: "Amount Paid (\(invoice.currency))", placeholder: "0.00", text: $amount, keyboard: .decimalPad)
             Text("The submission date and time will be recorded automatically.")
                 .font(.limu(size: 11))
                 .foregroundStyle(LimuColors.muted)

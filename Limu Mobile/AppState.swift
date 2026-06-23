@@ -1,5 +1,7 @@
 import Foundation
 import Combine
+import UIKit
+import UserNotifications
 
 @MainActor
 final class AppState: ObservableObject {
@@ -18,6 +20,7 @@ final class AppState: ObservableObject {
 
     private let api = APIClient.shared
     private let demoMode: Bool
+    private static let storedPushTokenKey = "limuAPNsToken"
 
     init() {
         let arguments = ProcessInfo.processInfo.arguments
@@ -62,6 +65,8 @@ final class AppState: ObservableObject {
         do {
             try await refreshAll()
             isAuthenticated = true
+            await registerStoredPushTokenIfAvailable()
+            configurePushNotifications()
         } catch {
             api.clearSession()
             isAuthenticated = false
@@ -81,6 +86,8 @@ final class AppState: ObservableObject {
             do { try await refreshAll() }
             catch { api.clearSession(); throw error }
             isAuthenticated = true
+            await registerStoredPushTokenIfAvailable()
+            configurePushNotifications()
         }
     }
 
@@ -110,6 +117,8 @@ final class AppState: ObservableObject {
             do { try await refreshAll() }
             catch { api.clearSession(); throw error }
             isAuthenticated = true
+            await registerStoredPushTokenIfAvailable()
+            configurePushNotifications()
         }
     }
 
@@ -166,7 +175,10 @@ final class AppState: ObservableObject {
     }
 
     func logout() async {
-        if !demoMode { try? await api.send("auth/logout.php", body: ["allSessions": false]) }
+        if !demoMode {
+            await revokeStoredPushToken()
+            try? await api.send("auth/logout.php", body: ["allSessions": false])
+        }
         api.clearSession()
         isAuthenticated = false
         profile = nil
@@ -179,13 +191,8 @@ final class AppState: ObservableObject {
 
     func refreshAll() async throws {
         let dashboardDTO: DashboardDTO = try await api.get("dashboard.php")
-        let canViewLogistics = Self.hasCompletedKYC(status: dashboardDTO.metrics.kycStatus)
-        let cargoDTOs: [CargoDTO] = canViewLogistics
-            ? try await api.get("cargo/index.php", query: [URLQueryItem(name: "perPage", value: "100")])
-            : []
-        let shipmentDTOs: [ShipmentDTO] = canViewLogistics
-            ? try await api.get("shipments/index.php", query: [URLQueryItem(name: "perPage", value: "100")])
-            : []
+        let cargoDTOs: [CargoDTO] = try await api.get("cargo/index.php", query: [URLQueryItem(name: "perPage", value: "100")])
+        let shipmentDTOs: [ShipmentDTO] = try await api.get("shipments/index.php", query: [URLQueryItem(name: "perPage", value: "100")])
         let invoiceDTOs: [InvoiceDTO] = try await api.get("invoices/index.php", query: [URLQueryItem(name: "perPage", value: "100")])
         let notificationDTOs: [NotificationDTO] = try await api.get("notifications/index.php", query: [URLQueryItem(name: "limit", value: "100")])
         dashboard = dashboardDTO
@@ -228,6 +235,55 @@ final class AppState: ObservableObject {
     func markAllRead() async {
         if !demoMode { try? await api.send("notifications/read-all.php") }
         for index in notifications.indices { notifications[index].isUnread = false }
+    }
+
+    func configurePushNotifications() {
+        guard !demoMode else { return }
+        Task { @MainActor in
+            let center = UNUserNotificationCenter.current()
+            do {
+                let settings = await center.notificationSettings()
+                let authorized: Bool
+                switch settings.authorizationStatus {
+                case .authorized, .provisional, .ephemeral:
+                    authorized = true
+                case .notDetermined:
+                    authorized = try await center.requestAuthorization(options: [.alert, .badge, .sound])
+                case .denied:
+                    authorized = false
+                @unknown default:
+                    authorized = false
+                }
+
+                if authorized {
+                    UIApplication.shared.registerForRemoteNotifications()
+                }
+            } catch {
+                // Push registration should not block sign-in or data refresh.
+            }
+        }
+    }
+
+    func savePushToken(_ token: String) async {
+        guard !demoMode else { return }
+        let cleaned = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return }
+        UserDefaults.standard.set(cleaned, forKey: Self.storedPushTokenKey)
+        guard isAuthenticated else { return }
+        try? await api.send(
+            "devices/push-token.php",
+            body: [
+                "token": cleaned,
+                "platform": "ios",
+                "environment": Self.apnsEnvironment,
+                "deviceId": deviceID
+            ]
+        )
+    }
+
+    func refreshAfterRemoteNotification() async {
+        guard isAuthenticated, !demoMode else { return }
+        try? await refreshAll()
     }
 
     func updateProfile(_ values: [String: Any]) async -> Bool {
@@ -319,5 +375,30 @@ final class AppState: ObservableObject {
         let value = UUID().uuidString
         UserDefaults.standard.set(value, forKey: "limuDeviceID")
         return value
+    }
+
+    private func registerStoredPushTokenIfAvailable() async {
+        guard let token = UserDefaults.standard.string(forKey: Self.storedPushTokenKey), !token.isEmpty else { return }
+        await savePushToken(token)
+    }
+
+    private func revokeStoredPushToken() async {
+        guard let token = UserDefaults.standard.string(forKey: Self.storedPushTokenKey), !token.isEmpty else {
+            try? await api.send("devices/push-token.php", method: "DELETE", body: ["deviceId": deviceID])
+            return
+        }
+        try? await api.send(
+            "devices/push-token.php",
+            method: "DELETE",
+            body: ["token": token, "deviceId": deviceID]
+        )
+    }
+
+    private static var apnsEnvironment: String {
+        #if DEBUG
+        return "development"
+        #else
+        return "production"
+        #endif
     }
 }
