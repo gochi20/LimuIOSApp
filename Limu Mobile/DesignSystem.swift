@@ -101,6 +101,60 @@ enum MalawiDistricts {
     ]
 }
 
+enum LimuDateFormatting {
+    static var defaultDateOfBirth: Date {
+        makeDate(year: 1990, month: 1, day: 15)
+    }
+
+    static var dateOfBirthRange: ClosedRange<Date> {
+        makeDate(year: 1900, month: 1, day: 1)...Date()
+    }
+
+    static func apiDate(from date: Date) -> String {
+        apiFormatter().string(from: date)
+    }
+
+    static func date(fromAPI value: String?) -> Date? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else {
+            return nil
+        }
+        return apiFormatter().date(from: value)
+    }
+
+    static func displayDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar.current
+        formatter.locale = Locale.current
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter.string(from: date)
+    }
+
+    static func clamped(_ date: Date, to range: ClosedRange<Date>) -> Date {
+        if date < range.lowerBound { return range.lowerBound }
+        if date > range.upperBound { return range.upperBound }
+        return date
+    }
+
+    private static func makeDate(year: Int, month: Int, day: Int) -> Date {
+        var components = DateComponents()
+        components.calendar = Calendar.current
+        components.year = year
+        components.month = month
+        components.day = day
+        return components.date ?? Date()
+    }
+
+    private static func apiFormatter() -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar.current
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }
+}
+
 struct PhoneCountryOption: Identifiable, Hashable {
     let isoCode: String
     let name: String
@@ -568,6 +622,109 @@ struct LimuTextField: View {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .stroke(LimuColors.charcoal.opacity(0.15), lineWidth: 1.5)
             }
+        }
+    }
+}
+
+struct DatePickerField: View {
+    let label: String
+    @Binding var date: Date
+    var range: ClosedRange<Date> = LimuDateFormatting.dateOfBirthRange
+
+    @State private var draftDate = LimuDateFormatting.defaultDateOfBirth
+    @State private var isPresented = false
+
+    private var displayValue: String {
+        LimuDateFormatting.displayDate(date)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label.uppercased())
+                .font(.limu(size: 12, weight: .semibold))
+                .tracking(0.6)
+                .foregroundStyle(LimuColors.secondary)
+            Button {
+                draftDate = LimuDateFormatting.clamped(date, to: range)
+                isPresented = true
+            } label: {
+                HStack(spacing: 10) {
+                    Text(displayValue)
+                        .font(.limu(size: 14))
+                        .foregroundStyle(LimuColors.ink)
+                    Spacer(minLength: 8)
+                    Image(systemName: "calendar")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(LimuColors.copper)
+                }
+                .padding(.horizontal, 14)
+                .frame(minHeight: 52)
+                .background(LimuColors.white)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(LimuColors.charcoal.opacity(0.15), lineWidth: 1.5)
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(label)
+            .accessibilityValue(displayValue)
+        }
+        .onAppear {
+            date = LimuDateFormatting.clamped(date, to: range)
+        }
+        .sheet(isPresented: $isPresented) {
+            NavigationStack {
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Choose your date of birth")
+                            .font(.limu(size: 16, weight: .bold))
+                            .foregroundStyle(LimuColors.ink)
+                        Text("This will be saved as \(LimuDateFormatting.apiDate(from: draftDate)).")
+                            .font(.limu(size: 12, weight: .medium))
+                            .foregroundStyle(LimuColors.muted)
+                    }
+
+                    DatePicker(
+                        label,
+                        selection: $draftDate,
+                        in: range,
+                        displayedComponents: .date
+                    )
+                    .datePickerStyle(.wheel)
+                    .labelsHidden()
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 238)
+                    .padding(.vertical, 8)
+                    .background(LimuColors.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(LimuColors.charcoal.opacity(0.08), lineWidth: 1)
+                    }
+
+                    Spacer(minLength: 0)
+                }
+                .padding(20)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .background(LimuColors.cream)
+                .navigationTitle(label)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { isPresented = false }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") {
+                            date = LimuDateFormatting.clamped(draftDate, to: range)
+                            isPresented = false
+                        }
+                        .font(.limu(size: 14, weight: .semibold))
+                    }
+                }
+            }
+            .tint(LimuColors.copper)
+            .preferredColorScheme(.light)
         }
     }
 }

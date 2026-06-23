@@ -174,7 +174,7 @@ private struct KYCView: View {
     @State private var phone = "+265 888 000 000"
     @State private var location = "Lilongwe"
     @State private var gender = "Male"
-    @State private var dateOfBirth = "1990-01-15"
+    @State private var dateOfBirth = LimuDateFormatting.defaultDateOfBirth
     @State private var businessName = "Addo Trading Ltd"
     @State private var category = ""
     @State private var businessSize = "1–5 employees"
@@ -249,7 +249,7 @@ private struct KYCView: View {
                         .padding(.top, 8)
                     }
                     .padding(20)
-                    .padding(.bottom, 72)
+                    .padding(.bottom, 150)
                 }
                 .onChange(of: step) { _, _ in
                     proxy.scrollTo("kyc-form-top", anchor: .top)
@@ -265,9 +265,9 @@ private struct KYCView: View {
             LimuTextField(label: "First Name", text: $firstName)
             LimuTextField(label: "Last Name", text: $lastName)
             LimuTextField(label: "Email", text: $email, keyboard: .emailAddress)
-            CountryPhoneField(label: "Phone Number", text: $phone)
             menuField(label: "Gender", value: $gender, options: ["Male", "Female", "Prefer not to say"])
-            LimuTextField(label: "Date of Birth", text: $dateOfBirth)
+            DatePickerField(label: "Date of Birth", date: $dateOfBirth, range: LimuDateFormatting.dateOfBirthRange)
+            CountryPhoneField(label: "Phone Number", text: $phone)
             DistrictPickerField(label: "District", selection: $location)
         case .business:
             LimuTextField(label: "Business Name", text: $businessName)
@@ -325,7 +325,7 @@ private struct KYCView: View {
             "tradeIntent": tradeIntent,
             "goodsCategories": Array(selectedCategories).sorted(),
             "serviceCategories": [], "occupations": [], "interests": [], "location": location,
-            "dateOfBirth": dateOfBirth,
+            "dateOfBirth": LimuDateFormatting.apiDate(from: dateOfBirth),
             "notes": "", "termsAccepted": acceptedTerms
         ]
     }
@@ -336,17 +336,22 @@ private struct KYCView: View {
         if let profile = appState.profile {
             firstName = profile.firstName; lastName = profile.lastName; email = profile.email
             phone = profile.phone; location = profile.location; gender = profile.gender ?? gender
-            dateOfBirth = profile.dateOfBirth ?? dateOfBirth; businessName = profile.businessName
+            setDateOfBirth(profile.dateOfBirth); businessName = profile.businessName
             category = profile.businessCategory
         }
         guard let record = try? await appState.loadKYC(), let value = record.submission else { return }
         firstName = value.firstName; lastName = value.lastName; email = value.email; phone = value.phone
-        location = value.location; gender = value.gender; dateOfBirth = value.dateOfBirth ?? dateOfBirth
+        location = value.location; gender = value.gender; setDateOfBirth(value.dateOfBirth)
         businessName = value.businessName; category = value.businessCategory; businessSize = value.businessSize
         businessDescription = value.businessOffering; tradeIntent = value.tradeIntent ?? ""
         selectedCategories = Set(value.goodsCategories)
         acceptedTerms = value.termsAccepted
         completed = record.status.caseInsensitiveCompare("Completed") == .orderedSame
+    }
+
+    private func setDateOfBirth(_ value: String?) {
+        guard let parsedDate = LimuDateFormatting.date(fromAPI: value) else { return }
+        dateOfBirth = LimuDateFormatting.clamped(parsedDate, to: LimuDateFormatting.dateOfBirthRange)
     }
 
     private func fieldLabel(_ title: String) -> some View {

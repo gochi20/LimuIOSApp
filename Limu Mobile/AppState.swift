@@ -265,7 +265,7 @@ final class AppState: ObservableObject {
             "categories/get.php",
             query: [
                 URLQueryItem(name: "q", value: query),
-                URLQueryItem(name: "limit", value: query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "12" : "50")
+                URLQueryItem(name: "limit", value: "500")
             ]
         )
     }
