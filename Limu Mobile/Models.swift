@@ -143,6 +143,161 @@ struct ShipmentUpdate: Identifiable, Hashable {
     let actor: String
 }
 
+struct OrderFormItem: Identifiable, Hashable {
+    let apiID: Int
+    let id: String
+    let status: String
+    let productName: String
+    let categoryName: String
+    let description: String
+    let productLink: URL?
+    let size: String
+    let quantity: Int
+    let unitPrice: Double
+    let productValue: Double
+    let localShipping: Double
+    let lineTotal: Double
+    let trackingNumber: String
+    let photoURLs: [URL]
+    let createdAt: String
+
+    init(
+        apiID: Int = 0,
+        id: String,
+        status: String,
+        productName: String,
+        categoryName: String = "",
+        description: String = "",
+        productLink: URL? = nil,
+        size: String = "",
+        quantity: Int,
+        unitPrice: Double,
+        productValue: Double,
+        localShipping: Double,
+        lineTotal: Double,
+        trackingNumber: String = "",
+        photoURLs: [URL] = [],
+        createdAt: String = "—"
+    ) {
+        self.apiID = apiID
+        self.id = id
+        self.status = status
+        self.productName = productName
+        self.categoryName = categoryName
+        self.description = description
+        self.productLink = productLink
+        self.size = size
+        self.quantity = quantity
+        self.unitPrice = unitPrice
+        self.productValue = productValue
+        self.localShipping = localShipping
+        self.lineTotal = lineTotal
+        self.trackingNumber = trackingNumber
+        self.photoURLs = photoURLs
+        self.createdAt = createdAt
+    }
+}
+
+struct OrderFormStatusUpdate: Identifiable, Hashable {
+    let id: String
+    let status: String
+    let note: String
+    let changedBy: String
+    let createdAt: String
+}
+
+struct OrderFormTimelineStep: Identifiable, Hashable {
+    let id: String
+    let label: String
+    let reached: Bool
+    let active: Bool
+    let note: String
+    let changedBy: String
+    let createdAt: String
+}
+
+struct OrderForm: Identifiable, Hashable {
+    let apiID: Int
+    let id: String
+    let title: String
+    let status: String
+    let orderDate: String
+    let createdAt: String
+    let orderType: String
+    let orderTypeRate: Double
+    let currency: String
+    let clientName: String
+    let assignedTo: String
+    let preparedBy: String
+    let shipmentReference: String
+    let totalProductValue: Double
+    let totalLocalCourier: Double
+    let agencyFee: Double
+    let grandTotal: Double
+    let itemCount: Int
+    let approvedItemCount: Int
+    let declinedItemCount: Int
+    let canClientReview: Bool
+    let clientViewURL: URL?
+    let items: [OrderFormItem]
+    let timeline: [OrderFormTimelineStep]
+    let statusUpdates: [OrderFormStatusUpdate]
+
+    init(
+        apiID: Int = 0,
+        id: String,
+        title: String = "",
+        status: String,
+        orderDate: String = "—",
+        createdAt: String = "—",
+        orderType: String = "Full",
+        orderTypeRate: Double = 7,
+        currency: String = LimuCurrency.defaultCode,
+        clientName: String = "",
+        assignedTo: String = "",
+        preparedBy: String = "",
+        shipmentReference: String = "",
+        totalProductValue: Double,
+        totalLocalCourier: Double,
+        agencyFee: Double,
+        grandTotal: Double,
+        itemCount: Int,
+        approvedItemCount: Int = 0,
+        declinedItemCount: Int = 0,
+        canClientReview: Bool,
+        clientViewURL: URL? = nil,
+        items: [OrderFormItem] = [],
+        timeline: [OrderFormTimelineStep] = [],
+        statusUpdates: [OrderFormStatusUpdate] = []
+    ) {
+        self.apiID = apiID
+        self.id = id
+        self.title = title
+        self.status = status
+        self.orderDate = orderDate
+        self.createdAt = createdAt
+        self.orderType = orderType
+        self.orderTypeRate = orderTypeRate
+        self.currency = LimuCurrency.code(currency)
+        self.clientName = clientName
+        self.assignedTo = assignedTo
+        self.preparedBy = preparedBy
+        self.shipmentReference = shipmentReference
+        self.totalProductValue = totalProductValue
+        self.totalLocalCourier = totalLocalCourier
+        self.agencyFee = agencyFee
+        self.grandTotal = grandTotal
+        self.itemCount = itemCount
+        self.approvedItemCount = approvedItemCount
+        self.declinedItemCount = declinedItemCount
+        self.canClientReview = canClientReview
+        self.clientViewURL = clientViewURL
+        self.items = items
+        self.timeline = timeline
+        self.statusUpdates = statusUpdates
+    }
+}
+
 struct InvoiceItem: Identifiable, Hashable {
     let id: String
     let label: String
@@ -283,6 +438,71 @@ enum MockData {
         ShipmentUpdate(id: "UPD-012-001", shipmentID: "SHP-0012", location: "Tema Port, Ghana", status: "Completed", message: "All cargo cleared and available for client collection at Limu Accra Depot.", timestamp: "2025-04-25 09:00", actor: "Operations")
     ]
 
+    static let orderForms: [OrderForm] = [
+        OrderForm(
+            apiID: 48,
+            id: "OF-2026-0048",
+            title: "Electronics sourcing",
+            status: "Client Review",
+            orderDate: "2026-06-20",
+            createdAt: "2026-06-20 10:20",
+            orderType: "Full",
+            orderTypeRate: 7,
+            clientName: "Limu Client",
+            assignedTo: "Sourcing Team",
+            preparedBy: "Limu Procurement",
+            shipmentReference: "Pending shipment",
+            totalProductValue: 1_420_000,
+            totalLocalCourier: 85_000,
+            agencyFee: 99_400,
+            grandTotal: 1_604_400,
+            itemCount: 3,
+            approvedItemCount: 1,
+            declinedItemCount: 0,
+            canClientReview: true,
+            items: [
+                OrderFormItem(apiID: 1, id: "OFI-001", status: "Approved", productName: "Bluetooth speakers", categoryName: "Electronics", description: "Portable wireless speakers with packaging", productLink: URL(string: "https://example.com/speakers"), size: "Carton", quantity: 20, unitPrice: 35_000, productValue: 700_000, localShipping: 42_500, lineTotal: 742_500),
+                OrderFormItem(apiID: 2, id: "OFI-002", status: "Draft", productName: "Phone accessories bundle", categoryName: "Electronics", description: "Cases, chargers, USB hubs", size: "Mixed", quantity: 100, unitPrice: 6_200, productValue: 620_000, localShipping: 35_000, lineTotal: 655_000),
+                OrderFormItem(apiID: 3, id: "OFI-003", status: "Draft", productName: "Supplier samples", categoryName: "Assorted", description: "Trial SKUs for review", size: "Small parcel", quantity: 1, unitPrice: 100_000, productValue: 100_000, localShipping: 7_500, lineTotal: 107_500)
+            ],
+            timeline: [
+                OrderFormTimelineStep(id: "draft", label: "Draft", reached: true, active: false, note: "Order captured by sourcing team.", changedBy: "Limu Procurement", createdAt: "2026-06-20 10:20"),
+                OrderFormTimelineStep(id: "client-review", label: "Client Review", reached: true, active: true, note: "Approve or decline items before purchase.", changedBy: "Client", createdAt: "2026-06-20 12:05"),
+                OrderFormTimelineStep(id: "supervisor-review", label: "Supervisor Review", reached: false, active: false, note: "Not started yet", changedBy: "", createdAt: "—"),
+                OrderFormTimelineStep(id: "pending-payment", label: "Pending Payment", reached: false, active: false, note: "Not started yet", changedBy: "", createdAt: "—"),
+                OrderFormTimelineStep(id: "pending-purchase", label: "Pending Purchase", reached: false, active: false, note: "Not started yet", changedBy: "", createdAt: "—"),
+                OrderFormTimelineStep(id: "purchased", label: "Purchased", reached: false, active: false, note: "Not started yet", changedBy: "", createdAt: "—"),
+                OrderFormTimelineStep(id: "dormant", label: "Dormant", reached: false, active: false, note: "Not started yet", changedBy: "", createdAt: "—")
+            ],
+            statusUpdates: [
+                OrderFormStatusUpdate(id: "LOG-001", status: "Client Review", note: "Client started review via item approvals/declines.", changedBy: "Client via mobile app", createdAt: "2026-06-20 12:05"),
+                OrderFormStatusUpdate(id: "LOG-002", status: "Item Approved", note: "Client approved Bluetooth speakers", changedBy: "Client via mobile app", createdAt: "2026-06-20 12:07")
+            ]
+        ),
+        OrderForm(
+            apiID: 43,
+            id: "OF-2026-0043",
+            title: "Kitchen appliances",
+            status: "Pending Purchase",
+            orderDate: "2026-06-10",
+            createdAt: "2026-06-10 09:10",
+            orderType: "Partial",
+            orderTypeRate: 5,
+            clientName: "Limu Client",
+            assignedTo: "Procurement Desk",
+            preparedBy: "Limu Procurement",
+            shipmentReference: "SEA-GZ-BLT-JUL26",
+            totalProductValue: 2_800_000,
+            totalLocalCourier: 125_000,
+            agencyFee: 140_000,
+            grandTotal: 3_065_000,
+            itemCount: 2,
+            approvedItemCount: 2,
+            declinedItemCount: 0,
+            canClientReview: false
+        )
+    ]
+
     static let invoices: [Invoice] = [
         Invoice(id: "INV-2025-0156", status: "Not Paid", date: "2025-06-04", total: 2450, balance: 2450, discount: 0, discountPercentage: 0, shipmentID: "SHP-0018", cargoID: "LMU-CGO-0041", currency: LimuCurrency.defaultCode, items: [
             InvoiceItem(id: "ITM-001", label: "Handling Fee", quantity: 1, total: 80),
@@ -305,9 +525,9 @@ enum MockData {
 
     static let notifications: [AppNotification] = [
         AppNotification(id: "NOT-001", title: "Cargo Ready for Collection", message: "LMU-CGO-0038 (Clothing & Footwear) is ready for pickup at Limu Accra Depot, Tema Road.", category: "Cargo", timestamp: "2025-06-09 08:30", isUnread: true, destination: .cargo),
-        AppNotification(id: "NOT-002", title: "Invoice INV-2025-0156 Issued", message: "A new invoice of MWK 2,450 has been raised for cargo LMU-CGO-0041. Please arrange payment.", category: "Invoice", timestamp: "2025-06-04 16:45", isUnread: true, destination: .invoices),
+        AppNotification(id: "NOT-002", title: "Order form ready for review", message: "OF-2026-0048 has items waiting for your approval before purchase.", category: "Order Form", timestamp: "2026-06-20 12:05", isUnread: true, destination: .orderForms),
         AppNotification(id: "NOT-003", title: "Shipment Update – SEA-GZ-ACC-MAY25", message: "Your shipment has cleared Suez Canal and is on schedule for arrival on 28 June 2025.", category: "Shipment", timestamp: "2025-05-28 14:30", isUnread: false, destination: .shipments),
-        AppNotification(id: "NOT-004", title: "Payment Received – INV-2025-0144", message: "Your payment of MWK 1,000 has been approved. Remaining balance: MWK 890.", category: "Payment", timestamp: "2025-05-15 10:00", isUnread: false, destination: .invoices)
+        AppNotification(id: "NOT-004", title: "Order moved to purchase", message: "OF-2026-0043 is now pending purchase with the sourcing team.", category: "Order Form", timestamp: "2026-06-12 10:00", isUnread: false, destination: .orderForms)
     ]
 
     static func money(_ value: Double, currency: String? = nil) -> String {

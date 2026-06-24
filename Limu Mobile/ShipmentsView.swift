@@ -66,6 +66,7 @@ struct ShipmentsView: View {
                 }
             }
             .background(LimuColors.cream)
+            .task { await appState.refreshShipments() }
         }
     }
 

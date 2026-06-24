@@ -50,7 +50,8 @@ struct DashboardDTO: Decodable {
     let metrics: DashboardMetricsDTO
     let activeCargo: [CargoDTO]
     let shipments: [ShipmentDTO]
-    let invoices: [InvoiceDTO]
+    let invoices: [InvoiceDTO]?
+    let orderForms: [OrderFormDTO]?
     let notifications: [NotificationDTO]
 }
 
@@ -199,6 +200,135 @@ struct ShipmentUpdateDTO: Decodable {
     }
 }
 
+struct OrderFormDTO: Decodable {
+    let id: Int
+    let number: String
+    let title: String
+    let status: String
+    let orderDate: String?
+    let createdAt: String?
+    let orderType: String
+    let orderTypeLabel: String?
+    let orderTypeRate: Double
+    let currency: String?
+    let clientName: String
+    let assignedTo: String
+    let preparedBy: String
+    let shipmentReference: String
+    let totalProductValue: Double
+    let totalLocalCourier: Double
+    let agencyFee: Double
+    let grandTotal: Double
+    let itemCount: Int
+    let approvedItemCount: Int
+    let declinedItemCount: Int
+    let canClientReview: Bool
+    let clientViewUrl: String?
+    let items: [OrderFormItemDTO]?
+    let timeline: [OrderFormTimelineStepDTO]?
+    let statusUpdates: [OrderFormStatusUpdateDTO]?
+
+    var model: OrderForm {
+        OrderForm(
+            apiID: id,
+            id: number.isEmpty ? "OF-\(id)" : number,
+            title: title,
+            status: status,
+            orderDate: orderDate ?? createdAt ?? "—",
+            createdAt: createdAt ?? "—",
+            orderType: orderTypeLabel ?? orderType.capitalized,
+            orderTypeRate: orderTypeRate,
+            currency: LimuCurrency.code(currency),
+            clientName: clientName,
+            assignedTo: assignedTo,
+            preparedBy: preparedBy,
+            shipmentReference: shipmentReference,
+            totalProductValue: totalProductValue,
+            totalLocalCourier: totalLocalCourier,
+            agencyFee: agencyFee,
+            grandTotal: grandTotal,
+            itemCount: itemCount,
+            approvedItemCount: approvedItemCount,
+            declinedItemCount: declinedItemCount,
+            canClientReview: canClientReview,
+            clientViewURL: clientViewUrl.flatMap(URL.init(string:)),
+            items: (items ?? []).map(\.model),
+            timeline: (timeline ?? []).map(\.model),
+            statusUpdates: (statusUpdates ?? []).map(\.model)
+        )
+    }
+}
+
+struct OrderFormItemDTO: Decodable {
+    let id: Int
+    let status: String
+    let productName: String
+    let categoryName: String
+    let description: String
+    let productLink: String?
+    let size: String
+    let quantity: Int
+    let unitPrice: Double
+    let productValue: Double
+    let localShipping: Double
+    let lineTotal: Double
+    let trackingNumber: String
+    let photoUrls: [String]
+    let createdAt: String?
+
+    var model: OrderFormItem {
+        OrderFormItem(
+            apiID: id,
+            id: "OFI-\(id)",
+            status: status,
+            productName: productName,
+            categoryName: categoryName,
+            description: description,
+            productLink: productLink.flatMap(URL.init(string:)),
+            size: size,
+            quantity: quantity,
+            unitPrice: unitPrice,
+            productValue: productValue,
+            localShipping: localShipping,
+            lineTotal: lineTotal,
+            trackingNumber: trackingNumber,
+            photoURLs: photoUrls.compactMap(URL.init(string:)),
+            createdAt: createdAt ?? "—"
+        )
+    }
+}
+
+struct OrderFormStatusUpdateDTO: Decodable {
+    let id: String
+    let status: String
+    let note: String
+    let changedBy: String
+    let createdAt: String?
+
+    var model: OrderFormStatusUpdate {
+        OrderFormStatusUpdate(id: id, status: status, note: note, changedBy: changedBy, createdAt: createdAt ?? "—")
+    }
+}
+
+struct OrderFormTimelineStepDTO: Decodable {
+    let id: String
+    let label: String
+    let reached: Bool
+    let active: Bool
+    let note: String
+    let changedBy: String
+    let createdAt: String?
+
+    var model: OrderFormTimelineStep {
+        OrderFormTimelineStep(id: id, label: label, reached: reached, active: active, note: note, changedBy: changedBy, createdAt: createdAt ?? "—")
+    }
+}
+
+struct OrderFormActionResultDTO: Decodable {
+    let order: OrderFormDTO
+    let supervisorNotified: Bool?
+}
+
 struct InvoiceDTO: Decodable {
     let id: Int
     let number: String
@@ -277,7 +407,24 @@ struct NotificationDTO: Decodable {
     let objectId: Int?
 
     var model: AppNotification {
-        let tab = AppTab(rawValue: destination.capitalized) ?? (destination == "invoices" ? .invoices : .home)
+        let normalized = destination
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+        let tab: AppTab
+        switch normalized {
+        case "cargo":
+            tab = .cargo
+        case "shipment", "shipments":
+            tab = .shipments
+        case "order", "order form", "order forms", "orderform", "orderforms", "invoice", "invoices", "payment":
+            tab = .orderForms
+        case "profile", "kyc":
+            tab = .profile
+        default:
+            tab = .home
+        }
         return AppNotification(id: id, title: title, message: message, category: category, timestamp: timestamp, isUnread: !isRead, destination: tab, objectID: objectId)
     }
 }

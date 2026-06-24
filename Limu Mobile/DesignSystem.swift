@@ -74,7 +74,7 @@ enum AppTab: String, CaseIterable {
     case home = "Home"
     case cargo = "Cargo"
     case shipments = "Shipments"
-    case invoices = "Invoices"
+    case orderForms = "Order Forms"
     case profile = "Profile"
 
     var icon: String {
@@ -82,7 +82,7 @@ enum AppTab: String, CaseIterable {
         case .home: "house"
         case .cargo: "shippingbox"
         case .shipments: "checklist"
-        case .invoices: "creditcard"
+        case .orderForms: "list.clipboard"
         case .profile: "person"
         }
     }
@@ -517,17 +517,17 @@ struct StatusBadge: View {
 
     private var palette: (Color, Color, Color) {
         switch status {
-        case "Active", "In Warehouse", "In Transit", "Upcoming", "Departed":
+        case "Active", "In Warehouse", "In Transit", "Upcoming", "Departed", "Draft":
             (Color(hex: "EFF6FF"), Color(hex: "1D4ED8"), Color(hex: "3B82F6"))
-        case "Ready for Collection", "Paid", "Approved", "Completed":
+        case "Ready for Collection", "Paid", "Approved", "Completed", "Purchased", "Item Approved":
             (LimuColors.successWash, LimuColors.success, Color(hex: "22C55E"))
         case "Loading":
             (Color(hex: "FFF7ED"), Color(hex: "C2410C"), Color(hex: "F97316"))
-        case "Payment Pending", "Partially Paid", "Pending":
+        case "Payment Pending", "Partially Paid", "Pending", "Pending Payment", "Pending Purchase":
             (Color(hex: "FFFBEB"), LimuColors.warning, Color(hex: "F59E0B"))
-        case "Not Paid", "Declined", "Not Started":
+        case "Not Paid", "Declined", "Not Started", "Dormant", "Item Declined":
             (LimuColors.dangerWash, LimuColors.danger, Color(hex: "EF4444"))
-        case "Pending Review":
+        case "Pending Review", "Client Review", "Supervisor Review":
             (Color(hex: "F5F3FF"), Color(hex: "6D28D9"), Color(hex: "8B5CF6"))
         default:
             (Color(hex: "F3F4F6"), Color(hex: "4B5563"), LimuColors.muted)

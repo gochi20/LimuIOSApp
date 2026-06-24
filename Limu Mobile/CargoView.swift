@@ -2,7 +2,7 @@ import SwiftUI
 
 struct CargoView: View {
     @EnvironmentObject private var appState: AppState
-    private enum Screen { case list, detail, package, payment }
+    private enum Screen { case list, detail, package }
 
     @State private var screen: Screen = .list
     @State private var selectedCargo: Cargo?
@@ -34,18 +34,13 @@ struct CargoView: View {
             case .list: listView
             case .detail:
                 if let selectedCargo {
-                    CargoDetailView(cargo: selectedCargo, packages: packages, timelineEvents: timeline, onBack: { screen = .list }, onPackage: { selectedPackage = $0; screen = .package }, onPayment: { screen = .payment })
+                    CargoDetailView(cargo: selectedCargo, packages: packages, timelineEvents: timeline, onBack: { screen = .list }, onPackage: { selectedPackage = $0; screen = .package })
                 }
             case .package:
                 if let selectedPackage { PackageDetailView(package: selectedPackage) { screen = .detail } }
-            case .payment:
-                if let selectedCargo, let invoice = appState.invoices.first(where: { $0.apiID == selectedCargo.invoiceAPIID || $0.cargoID == selectedCargo.id }) {
-                    PaymentUploadView(invoice: invoice) { screen = .detail }
-                } else if let selectedCargo {
-                    CargoDetailView(cargo: selectedCargo, packages: packages, timelineEvents: timeline, onBack: { screen = .list }, onPackage: { _ in }, onPayment: {})
-                }
             }
         }
+        .task { await appState.refreshCargo() }
     }
 
     private var listView: some View {
@@ -122,7 +117,10 @@ struct CargoView: View {
                     IconText(icon: "mappin", text: cargo.location)
                     IconText(icon: "shippingbox", text: "\(cargo.packages) packages")
                 }
-                IconText(icon: "scalemass", text: "\(cargo.weight.formatted()) kg · \(cargo.volume.formatted()) CBM")
+                HStack(spacing: 12) {
+                    IconText(icon: "scalemass", text: "\(cargo.weight.formatted()) kg")
+                    IconText(icon: "cube.transparent", text: "\(cargo.volume.formatted()) CBM")
+                }
             }
             .padding(.vertical, 10)
             HStack {
@@ -154,7 +152,6 @@ private struct CargoDetailView: View {
     let timelineEvents: [TimelineEvent]
     let onBack: () -> Void
     let onPackage: (CargoPackage) -> Void
-    let onPayment: () -> Void
     @State private var tab = "Overview"
 
     var body: some View {
@@ -193,7 +190,14 @@ private struct CargoDetailView: View {
                     StatusBadge(status: cargo.financeStatus, medium: true)
                 }
                 if cargo.financeStatus == "Payment Pending" {
-                    PrimaryButton(title: "Upload Payment Proof", action: onPayment)
+                    Label("Payment is handled from the related order form once available.", systemImage: "list.clipboard")
+                        .font(.limu(size: 12, weight: .semibold))
+                        .foregroundStyle(LimuColors.warning)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .background(Color(hex: "FFFBEB"))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
                         .padding(.top, 12)
                 } else if cargo.financeStatus == "Approved" {
                     Label("Payment confirmed and approved", systemImage: "checkmark.circle.fill")

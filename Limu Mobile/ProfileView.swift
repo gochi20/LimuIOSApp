@@ -20,6 +20,7 @@ struct ProfileView: View {
             }
         }
         .onAppear(perform: openKYCIfRequested)
+        .task { await appState.refreshDashboard() }
         .onChange(of: shouldOpenKYC) { _, requested in
             if requested { openKYCIfRequested() }
         }

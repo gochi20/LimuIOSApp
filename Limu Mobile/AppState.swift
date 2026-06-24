@@ -15,6 +15,7 @@ final class AppState: ObservableObject {
     @Published var cargo: [Cargo] = []
     @Published var shipments: [Shipment] = []
     @Published var invoices: [Invoice] = []
+    @Published var orderForms: [OrderForm] = []
     @Published var notifications: [AppNotification] = []
     @Published private var demoKYCCompleted = false
 
@@ -32,6 +33,7 @@ final class AppState: ObservableObject {
             cargo = MockData.cargo
             shipments = MockData.shipments
             invoices = MockData.invoices
+            orderForms = MockData.orderForms
             let demoNotifications = MockData.notifications
             notifications = demoKYCCompleted
                 ? demoNotifications
@@ -146,6 +148,7 @@ final class AppState: ObservableObject {
         cargo = []
         shipments = []
         invoices = []
+        orderForms = []
         notifications = []
         clearError()
     }
@@ -186,6 +189,7 @@ final class AppState: ObservableObject {
         cargo = []
         shipments = []
         invoices = []
+        orderForms = []
         notifications = []
     }
 
@@ -193,14 +197,72 @@ final class AppState: ObservableObject {
         let dashboardDTO: DashboardDTO = try await api.get("dashboard.php")
         let cargoDTOs: [CargoDTO] = try await api.get("cargo/index.php", query: [URLQueryItem(name: "perPage", value: "100")])
         let shipmentDTOs: [ShipmentDTO] = try await api.get("shipments/index.php", query: [URLQueryItem(name: "perPage", value: "100")])
-        let invoiceDTOs: [InvoiceDTO] = try await api.get("invoices/index.php", query: [URLQueryItem(name: "perPage", value: "100")])
+        let orderFormDTOs: [OrderFormDTO]
+        do {
+            orderFormDTOs = try await api.get("orderforms/index.php", query: [URLQueryItem(name: "perPage", value: "100")])
+        } catch {
+            orderFormDTOs = dashboardDTO.orderForms ?? []
+        }
         let notificationDTOs: [NotificationDTO] = try await api.get("notifications/index.php", query: [URLQueryItem(name: "limit", value: "100")])
         dashboard = dashboardDTO
         profile = dashboardDTO.client
         cargo = cargoDTOs.map(\.model)
         shipments = shipmentDTOs.map(\.model)
-        invoices = invoiceDTOs.map(\.model)
+        invoices = []
+        orderForms = orderFormDTOs.map(\.model)
         notifications = notificationDTOs.map(\.model)
+    }
+
+    // MARK: - Per-screen refresh
+    // Each screen pulls its own latest data when it appears so newly created
+    // records show up without a logout/login cycle. Failures are intentionally
+    // silent: a transient network blip just leaves the last-known data on screen.
+
+    private var liveSession: Bool { !demoMode && isAuthenticated }
+
+    func refreshCargo() async {
+        guard liveSession else { return }
+        if let cargoDTOs: [CargoDTO] = try? await api.get("cargo/index.php", query: [URLQueryItem(name: "perPage", value: "100")]) {
+            cargo = cargoDTOs.map(\.model)
+        }
+    }
+
+    func refreshShipments() async {
+        guard liveSession else { return }
+        if let shipmentDTOs: [ShipmentDTO] = try? await api.get("shipments/index.php", query: [URLQueryItem(name: "perPage", value: "100")]) {
+            shipments = shipmentDTOs.map(\.model)
+        }
+    }
+
+    func refreshOrderForms() async {
+        guard liveSession else { return }
+        if let orderFormDTOs: [OrderFormDTO] = try? await api.get("orderforms/index.php", query: [URLQueryItem(name: "perPage", value: "100")]) {
+            orderForms = orderFormDTOs.map(\.model)
+        }
+    }
+
+    func refreshNotifications() async {
+        guard liveSession else { return }
+        if let notificationDTOs: [NotificationDTO] = try? await api.get("notifications/index.php", query: [URLQueryItem(name: "limit", value: "100")]) {
+            notifications = notificationDTOs.map(\.model)
+        }
+    }
+
+    func refreshDashboard() async {
+        guard liveSession else { return }
+        if let dashboardDTO: DashboardDTO = try? await api.get("dashboard.php") {
+            dashboard = dashboardDTO
+            profile = dashboardDTO.client
+        }
+    }
+
+    func refreshHome() async {
+        guard liveSession else { return }
+        await refreshDashboard()
+        await refreshCargo()
+        await refreshShipments()
+        await refreshOrderForms()
+        await refreshNotifications()
     }
 
     func fetchCargoDetail(_ id: Int) async throws -> (Cargo, [CargoPackage], [TimelineEvent]) {
@@ -224,6 +286,133 @@ final class AppState: ObservableObject {
         if demoMode { return invoices.first(where: { $0.apiID == id || id == 0 }) ?? MockData.invoices[0] }
         let dto: InvoiceDTO = try await api.get("invoices/show.php", query: [URLQueryItem(name: "id", value: String(id))])
         return dto.model
+    }
+
+    func fetchOrderFormDetail(_ id: Int) async throws -> OrderForm {
+        if demoMode {
+            return orderForms.first(where: { $0.apiID == id || $0.id == "OF-\(id)" || id == 0 }) ?? MockData.orderForms[0]
+        }
+        let dto: OrderFormDTO = try await api.get("orderforms/show.php", query: [URLQueryItem(name: "id", value: String(id))])
+        let orderForm = dto.model
+        upsertOrderForm(orderForm)
+        return orderForm
+    }
+
+    func setOrderFormItemStatus(orderFormID: Int, itemID: Int, action: String) async -> OrderForm? {
+        if demoMode {
+            guard let index = orderForms.firstIndex(where: { $0.apiID == orderFormID || orderFormID == 0 }) else { return orderForms.first }
+            let current = orderForms[index]
+            let newStatus = action == "decline" ? "Declined" : "Approved"
+            let updatedItems = current.items.map { item in
+                item.apiID == itemID || item.id == "OFI-\(itemID)"
+                    ? OrderFormItem(
+                        apiID: item.apiID,
+                        id: item.id,
+                        status: newStatus,
+                        productName: item.productName,
+                        categoryName: item.categoryName,
+                        description: item.description,
+                        productLink: item.productLink,
+                        size: item.size,
+                        quantity: item.quantity,
+                        unitPrice: item.unitPrice,
+                        productValue: item.productValue,
+                        localShipping: item.localShipping,
+                        lineTotal: item.lineTotal,
+                        trackingNumber: item.trackingNumber,
+                        photoURLs: item.photoURLs,
+                        createdAt: item.createdAt
+                    )
+                    : item
+            }
+            let updated = OrderForm(
+                apiID: current.apiID,
+                id: current.id,
+                title: current.title,
+                status: current.status == "Draft" ? "Client Review" : current.status,
+                orderDate: current.orderDate,
+                createdAt: current.createdAt,
+                orderType: current.orderType,
+                orderTypeRate: current.orderTypeRate,
+                currency: current.currency,
+                clientName: current.clientName,
+                assignedTo: current.assignedTo,
+                preparedBy: current.preparedBy,
+                shipmentReference: current.shipmentReference,
+                totalProductValue: current.totalProductValue,
+                totalLocalCourier: current.totalLocalCourier,
+                agencyFee: current.agencyFee,
+                grandTotal: current.grandTotal,
+                itemCount: current.itemCount,
+                approvedItemCount: updatedItems.filter { $0.status == "Approved" }.count,
+                declinedItemCount: updatedItems.filter { $0.status == "Declined" }.count,
+                canClientReview: current.canClientReview,
+                clientViewURL: current.clientViewURL,
+                items: updatedItems,
+                timeline: current.timeline,
+                statusUpdates: current.statusUpdates
+            )
+            orderForms[index] = updated
+            return updated
+        }
+
+        var updatedOrder: OrderForm?
+        let success = await runBusy {
+            let result: OrderFormActionResultDTO = try await api.post(
+                "orderforms/item-action.php",
+                body: ["id": orderFormID, "itemId": itemID, "action": action]
+            )
+            updatedOrder = result.order.model
+            if let updatedOrder { upsertOrderForm(updatedOrder) }
+        }
+        return success ? updatedOrder : nil
+    }
+
+    func completeOrderFormReview(orderFormID: Int) async -> OrderForm? {
+        if demoMode {
+            guard let index = orderForms.firstIndex(where: { $0.apiID == orderFormID || orderFormID == 0 }) else { return orderForms.first }
+            let current = orderForms[index]
+            let updated = OrderForm(
+                apiID: current.apiID,
+                id: current.id,
+                title: current.title,
+                status: "Supervisor Review",
+                orderDate: current.orderDate,
+                createdAt: current.createdAt,
+                orderType: current.orderType,
+                orderTypeRate: current.orderTypeRate,
+                currency: current.currency,
+                clientName: current.clientName,
+                assignedTo: current.assignedTo,
+                preparedBy: current.preparedBy,
+                shipmentReference: current.shipmentReference,
+                totalProductValue: current.totalProductValue,
+                totalLocalCourier: current.totalLocalCourier,
+                agencyFee: current.agencyFee,
+                grandTotal: current.grandTotal,
+                itemCount: current.itemCount,
+                approvedItemCount: current.approvedItemCount,
+                declinedItemCount: current.declinedItemCount,
+                canClientReview: false,
+                clientViewURL: current.clientViewURL,
+                items: current.items,
+                timeline: current.timeline,
+                statusUpdates: current.statusUpdates
+            )
+            orderForms[index] = updated
+            return updated
+        }
+
+        var updatedOrder: OrderForm?
+        let success = await runBusy {
+            let result: OrderFormActionResultDTO = try await api.post(
+                "orderforms/review-complete.php",
+                body: ["id": orderFormID]
+            )
+            updatedOrder = result.order.model
+            if let updatedOrder { upsertOrderForm(updatedOrder) }
+        }
+        return success ? updatedOrder : nil
     }
 
     func markRead(_ notification: AppNotification) async {
@@ -346,6 +535,14 @@ final class AppState: ObservableObject {
 
     private static func hasCompletedKYC(status: String) -> Bool {
         status.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare("Completed") == .orderedSame
+    }
+
+    private func upsertOrderForm(_ orderForm: OrderForm) {
+        if let index = orderForms.firstIndex(where: { $0.apiID == orderForm.apiID || $0.id == orderForm.id }) {
+            orderForms[index] = orderForm
+        } else {
+            orderForms.insert(orderForm, at: 0)
+        }
     }
 
     func uploadPayment(invoiceID: Int, amount: Double, transactionID: String, notes: String, fileURL: URL) async -> Bool {

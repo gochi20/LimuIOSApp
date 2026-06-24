@@ -11,7 +11,7 @@ struct ContentView: View {
         let args = ProcessInfo.processInfo.arguments
         _appState = StateObject(wrappedValue: AppState())
         if let index = args.firstIndex(of: "--tab"), args.indices.contains(index + 1),
-           let tab = AppTab(rawValue: args[index + 1].capitalized) {
+           let tab = Self.tab(from: args[index + 1]) {
             _selectedTab = State(initialValue: tab)
         } else {
             _selectedTab = State(initialValue: .home)
@@ -88,8 +88,8 @@ struct ContentView: View {
                     Tab("Shipments", systemImage: AppTab.shipments.icon, value: AppTab.shipments) {
                         ShipmentsView()
                     }
-                    Tab("Invoices", systemImage: AppTab.invoices.icon, value: AppTab.invoices) {
-                        InvoicesView()
+                    Tab("Order Forms", systemImage: AppTab.orderForms.icon, value: AppTab.orderForms) {
+                        OrderFormsView()
                     }
                     Tab("Profile", systemImage: AppTab.profile.icon, value: AppTab.profile) {
                         ProfileView(shouldOpenKYC: $shouldOpenKYC) {
@@ -155,14 +155,30 @@ struct ContentView: View {
             return .cargo
         case "shipment", "shipments":
             return .shipments
-        case "invoice", "invoices", "payment":
-            return .invoices
+        case "order", "order form", "order forms", "orderform", "orderforms", "invoice", "invoices", "payment":
+            return .orderForms
         case "profile", "kyc":
             return .profile
         case "home", "notifications":
             return .home
         default:
             return nil
+        }
+    }
+
+    private static func tab(from rawValue: String) -> AppTab? {
+        let normalized = rawValue
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+        switch normalized {
+        case "home": return .home
+        case "cargo": return .cargo
+        case "shipment", "shipments": return .shipments
+        case "order", "order form", "order forms", "orderform", "orderforms", "invoice", "invoices": return .orderForms
+        case "profile": return .profile
+        default: return nil
         }
     }
 

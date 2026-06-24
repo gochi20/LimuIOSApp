@@ -61,6 +61,7 @@ struct NotificationsView: View {
             }
         }
         .background(LimuColors.cream.ignoresSafeArea())
+        .task { await appState.refreshNotifications() }
     }
 
     private func open(_ notification: AppNotification) {
@@ -112,6 +113,7 @@ struct NotificationsView: View {
     private func icon(for category: String) -> String {
         switch category {
         case "Cargo": "shippingbox.fill"
+        case "Order Form": "list.clipboard.fill"
         case "Invoice": "doc.text.fill"
         case "Payment": "creditcard.fill"
         case "Shipment": "ferry.fill"
@@ -122,6 +124,7 @@ struct NotificationsView: View {
 
     private func categoryBackground(_ category: String) -> Color {
         switch category {
+        case "Order Form": LimuColors.copperWash
         case "Payment": LimuColors.successWash
         case "Invoice": LimuColors.dangerWash
         default: LimuColors.copperWash

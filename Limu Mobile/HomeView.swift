@@ -8,9 +8,9 @@ struct HomeView: View {
     let onNotifications: () -> Void
 
     private var activeCargo: [Cargo] { appState.cargo.filter { !["Collected", "Completed"].contains($0.status) } }
-    private var pendingBalance: Double { appState.invoices.filter { $0.status != "Paid" }.reduce(0) { $0 + $1.balance } }
+    private var reviewOrderForms: [OrderForm] { appState.orderForms.filter(\.canClientReview) }
     private var defaultCurrency: String {
-        LimuCurrency.code(appState.dashboard?.metrics.currency ?? appState.invoices.first?.currency)
+        LimuCurrency.code(appState.dashboard?.metrics.currency ?? appState.orderForms.first?.currency)
     }
 
     var body: some View {
@@ -30,9 +30,9 @@ struct HomeView: View {
                             .buttonStyle(.plain)
                     }
                 }
-                homeSection("Invoices", seeAll: { onNavigate(.invoices) }) {
-                    ForEach(appState.invoices.prefix(2)) { invoice in
-                        Button { onNavigate(.invoices) } label: { invoicePreview(invoice) }
+                homeSection("Order Forms", seeAll: { onNavigate(.orderForms) }) {
+                    ForEach(appState.orderForms.prefix(2)) { orderForm in
+                        Button { onNavigate(.orderForms) } label: { orderFormPreview(orderForm) }
                             .buttonStyle(.plain)
                     }
                 }
@@ -46,6 +46,7 @@ struct HomeView: View {
         }
         .background(LimuColors.cream)
         .ignoresSafeArea(edges: .top)
+        .task { await appState.refreshHome() }
     }
 
     private var hero: some View {
@@ -92,7 +93,7 @@ struct HomeView: View {
         HStack(spacing: 10) {
             metricCard(icon: "shippingbox.fill", tint: LimuColors.copperWash, value: "\(appState.dashboard?.metrics.activeCargoCount ?? activeCargo.count)", label: "Active Cargo") { onNavigate(.cargo) }
             metricCard(icon: "storefront.fill", tint: LimuColors.successWash, value: "\(appState.dashboard?.metrics.readyForCollectionCount ?? appState.cargo.filter(\.readyForCollection).count)", label: "For Collection") { onNavigate(.cargo) }
-            metricCard(icon: "creditcard.fill", tint: LimuColors.dangerWash, value: MockData.money(pendingBalance, currency: defaultCurrency), label: "Balance Due") { onNavigate(.invoices) }
+            metricCard(icon: "list.clipboard.fill", tint: LimuColors.dangerWash, value: "\(reviewOrderForms.count)", label: "For Review") { onNavigate(.orderForms) }
         }
         .padding(.horizontal, 16)
         .offset(y: -14)
@@ -156,11 +157,13 @@ struct HomeView: View {
                 Spacer()
                 StatusBadge(status: cargo.status)
             }
-            HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
                 IconText(icon: "mappin", text: cargo.location)
-                Spacer(minLength: 2)
-                IconText(icon: "shippingbox", text: "\(cargo.packages) pkgs")
-                IconText(icon: "scalemass", text: "\(cargo.weight.formatted()) kg")
+                HStack(spacing: 12) {
+                    IconText(icon: "shippingbox", text: "\(cargo.packages) pkgs")
+                    IconText(icon: "scalemass", text: "\(cargo.weight.formatted()) kg")
+                    IconText(icon: "cube.transparent", text: "\(cargo.volume.formatted()) CBM")
+                }
             }
             .padding(.top, 10)
             HStack {
@@ -208,19 +211,19 @@ struct HomeView: View {
         }
     }
 
-    private func invoicePreview(_ invoice: Invoice) -> some View {
+    private func orderFormPreview(_ orderForm: OrderForm) -> some View {
         LimuCard(padding: 16) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(invoice.id).font(.limu(size: 13, weight: .bold)).foregroundStyle(LimuColors.ink)
-                    Text("\(invoice.date) · \(invoice.currency)").font(.limu(size: 11)).foregroundStyle(LimuColors.muted)
+                    Text(orderForm.id).font(.limu(size: 13, weight: .bold)).foregroundStyle(LimuColors.ink)
+                    Text("\(orderForm.orderDate) · \(orderForm.itemCount) items").font(.limu(size: 11)).foregroundStyle(LimuColors.muted)
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 4) {
-                    Text(MockData.money(invoice.balance, currency: invoice.currency))
+                    Text(MockData.money(orderForm.grandTotal, currency: defaultCurrency))
                         .font(.limu(size: 15, weight: .bold))
-                        .foregroundStyle(invoice.balance > 0 ? LimuColors.danger : LimuColors.success)
-                    StatusBadge(status: invoice.status)
+                        .foregroundStyle(LimuColors.copper)
+                    StatusBadge(status: orderForm.status)
                 }
             }
         }
