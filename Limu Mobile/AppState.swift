@@ -211,6 +211,7 @@ final class AppState: ObservableObject {
         invoices = []
         orderForms = orderFormDTOs.map(\.model)
         notifications = notificationDTOs.map(\.model)
+        await hydrateOrderFormsFromNotifications()
     }
 
     // MARK: - Per-screen refresh
@@ -239,6 +240,7 @@ final class AppState: ObservableObject {
         if let orderFormDTOs: [OrderFormDTO] = try? await api.get("orderforms/index.php", query: [URLQueryItem(name: "perPage", value: "100")]) {
             orderForms = orderFormDTOs.map(\.model)
         }
+        await hydrateOrderFormsFromNotifications()
     }
 
     func refreshNotifications() async {
@@ -542,6 +544,21 @@ final class AppState: ObservableObject {
             orderForms[index] = orderForm
         } else {
             orderForms.insert(orderForm, at: 0)
+        }
+    }
+
+    private func hydrateOrderFormsFromNotifications() async {
+        guard liveSession else { return }
+        let knownIDs = Set(orderForms.map(\.apiID))
+        let referencedIDs = notifications.compactMap { notification -> Int? in
+            guard let objectID = notification.objectID, !knownIDs.contains(objectID) else { return nil }
+            let category = notification.category.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return category == "order form" || notification.destination == .orderForms ? objectID : nil
+        }
+        for id in Array(Set(referencedIDs)).prefix(5) {
+            if let dto: OrderFormDTO = try? await api.get("orderforms/show.php", query: [URLQueryItem(name: "id", value: String(id))]) {
+                upsertOrderForm(dto.model)
+            }
         }
     }
 
