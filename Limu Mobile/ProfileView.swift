@@ -27,10 +27,18 @@ struct ProfileView: View {
     }
 
     private var profile: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                profileHeader
+        VStack(spacing: 0) {
+            PageHeader {
+                HStack(spacing: 12) {
+                    Text("My Profile")
+                        .font(.limu(size: 18, weight: .bold))
+                    Spacer()
+                    BrandCircleSymbol(systemName: "person.fill", diameter: 40, symbolSize: 17)
+                }
+            }
+            ScrollView {
                 VStack(spacing: 12) {
+                    identityCard
                     if appState.hasCompletedKYC {
                         HStack(spacing: 10) {
                             statCard(icon: "ferry.fill", value: "\(appState.profile?.shipmentCount ?? appState.shipments.count)", label: "Total Shipments")
@@ -71,36 +79,35 @@ struct ProfileView: View {
                     Color.clear.frame(height: 24)
                 }
                 .padding(.horizontal, 16)
-                .offset(y: -12)
-                .padding(.bottom, -12)
+                .padding(.top, 16)
             }
+            .refreshable { await appState.refreshDashboard() }
         }
         .background(LimuColors.cream)
-        .ignoresSafeArea(edges: .top)
     }
 
-    private var profileHeader: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("My Profile").font(.limu(size: 18, weight: .bold))
+    private var identityCard: some View {
+        LimuCard(padding: 16) {
             HStack(spacing: 14) {
                 Text(initials)
                     .font(.limu(size: 22, weight: .heavy)).foregroundStyle(.white)
                     .frame(width: 56, height: 56).background(LimuColors.copper).clipShape(Circle())
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(appState.profile?.fullName ?? "Limu Client").font(.limu(size: 17, weight: .bold))
-                    Text(appState.profile?.email ?? "").font(.limu(size: 12)).foregroundStyle(LimuColors.peach)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(appState.profile?.fullName ?? "Limu Client")
+                        .font(.limu(size: 17, weight: .bold))
+                        .foregroundStyle(LimuColors.ink)
+                    if let email = appState.profile?.email, !email.isEmpty {
+                        Text(email).font(.limu(size: 12)).foregroundStyle(LimuColors.secondary)
+                    }
                     Text("\(appState.profile?.customerCategory ?? "Client") Client")
-                        .font(.limu(size: 10, weight: .bold)).foregroundStyle(LimuColors.peach)
+                        .font(.limu(size: 10, weight: .bold)).foregroundStyle(LimuColors.copper)
                         .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(LimuColors.copper.opacity(0.25)).clipShape(Capsule())
+                        .background(LimuColors.copperWash).clipShape(Capsule())
                         .overlay { Capsule().stroke(LimuColors.copper.opacity(0.5)) }
                 }
+                Spacer(minLength: 0)
             }
         }
-        .padding(.horizontal, 20).padding(.top, 64).padding(.bottom, 32)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .foregroundStyle(.white)
-        .background { BrandHeaderBackdrop() }
     }
 
     private var initials: String {
@@ -169,6 +176,7 @@ private struct KYCView: View {
 
     private var isLastStep: Bool { step == steps.count - 1 }
 
+    @State private var showingEmailVerification = false
     @State private var firstName = "Thandiwe"
     @State private var lastName = "Banda"
     @State private var email = "thandiwe.banda@example.com"
@@ -194,30 +202,30 @@ private struct KYCView: View {
     }
 
     private var header: some View {
-        AppHeader {
+        PageHeader {
             Button(action: onBack) {
-                Label("Profile", systemImage: "chevron.left").font(.limu(size: 13, weight: .medium)).foregroundStyle(LimuColors.peach)
+                Label("Profile", systemImage: "chevron.left").font(.limu(size: 13, weight: .medium)).foregroundStyle(LimuColors.copper)
             }.buttonStyle(.plain).padding(.bottom, 8)
             HStack {
                 Text("KYC Details").font(.limu(size: 17, weight: .bold))
                 Spacer()
                 Text("\(appState.clientType) account")
                     .font(.limu(size: 10, weight: .bold))
-                    .foregroundStyle(LimuColors.peach)
+                    .foregroundStyle(LimuColors.copper)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 4)
-                    .background(LimuColors.copper.opacity(0.24))
+                    .background(LimuColors.copperWash)
                     .clipShape(Capsule())
                     .overlay { Capsule().stroke(LimuColors.copper.opacity(0.5)) }
             }
             .padding(.bottom, 12)
             HStack(spacing: 4) {
                 ForEach(steps.indices, id: \.self) { index in
-                    Capsule().fill(index <= step ? LimuColors.copper : LimuColors.peach.opacity(0.3)).frame(height: 4)
+                    Capsule().fill(index <= step ? LimuColors.copper : LimuColors.peach.opacity(0.45)).frame(height: 4)
                 }
             }
             Text("Step \(step + 1) of \(steps.count): \(currentStep.rawValue)")
-                .font(.limu(size: 11)).foregroundStyle(LimuColors.peach).padding(.top, 6)
+                .font(.limu(size: 11)).foregroundStyle(LimuColors.secondary).padding(.top, 6)
         }
     }
 
@@ -239,12 +247,7 @@ private struct KYCView: View {
                                 title: isLastStep ? "Complete KYC" : "Continue",
                                 disabled: isCurrentStepIncomplete
                             ) {
-                                Task {
-                                    let success = await appState.saveKYC(payload, submit: isLastStep)
-                                    if success {
-                                        if isLastStep { completed = true } else { step += 1 }
-                                    }
-                                }
+                                Task { await advance() }
                             }
                         }
                         .padding(.top, 8)
@@ -258,6 +261,22 @@ private struct KYCView: View {
             }
         }
         .background(LimuColors.cream)
+        .sheet(isPresented: $showingEmailVerification) {
+            KYCEmailVerificationSheet(email: email) {
+                showingEmailVerification = false
+                Task { await advance() }
+            }
+        }
+    }
+
+    private func advance() async {
+        let success = await appState.saveKYC(payload, submit: isLastStep)
+        if success {
+            if isLastStep { completed = true } else { step += 1 }
+        } else if isLastStep && appState.lastErrorCode == "EMAIL_VERIFICATION_REQUIRED" {
+            appState.clearError()
+            showingEmailVerification = true
+        }
     }
 
     @ViewBuilder private var stepContent: some View {
@@ -378,8 +397,8 @@ private struct KYCView: View {
 
     private var completedView: some View {
         VStack(spacing: 0) {
-            AppHeader {
-                Button(action: onBack) { Label("Profile", systemImage: "chevron.left").font(.limu(size: 13)).foregroundStyle(LimuColors.peach) }.buttonStyle(.plain)
+            PageHeader {
+                Button(action: onBack) { Label("Profile", systemImage: "chevron.left").font(.limu(size: 13)).foregroundStyle(LimuColors.copper) }.buttonStyle(.plain)
             }
             VStack(spacing: 16) {
                 Image(systemName: "checkmark.circle.fill").font(.limu(size: 66)).foregroundStyle(LimuColors.success)
@@ -679,5 +698,106 @@ private struct ChangePasswordView: View {
                 }.padding(20)
             }
         }.background(LimuColors.cream)
+    }
+}
+
+private struct KYCEmailVerificationSheet: View {
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
+
+    let email: String
+    let onVerified: () -> Void
+
+    @State private var code = ""
+    @State private var sending = true
+    @State private var sendFailed = false
+    @State private var resent = false
+
+    var body: some View {
+        VStack(spacing: 18) {
+            Capsule().fill(LimuColors.divider).frame(width: 40, height: 5).padding(.top, 10)
+
+            Image(systemName: "envelope.badge")
+                .font(.system(size: 34, weight: .semibold))
+                .foregroundStyle(LimuColors.copper)
+                .padding(.top, 8)
+                .accessibilityHidden(true)
+
+            VStack(spacing: 6) {
+                Text("Verify your email")
+                    .font(.limu(size: 18, weight: .bold))
+                    .foregroundStyle(LimuColors.ink)
+                Text("Before completing KYC, enter the code we sent to\n\(email)")
+                    .font(.limu(size: 13))
+                    .foregroundStyle(LimuColors.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(3)
+            }
+
+            if sendFailed {
+                Label("We couldn't send the email. Tap Resend code to try again.", systemImage: "exclamationmark.triangle.fill")
+                    .font(.limu(size: 11, weight: .medium))
+                    .foregroundStyle(LimuColors.warning)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(hex: "FFFBEB"))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+
+            LimuTextField(label: "6-Digit Verification Code", placeholder: "000000", text: $code, keyboard: .numberPad)
+                .onChange(of: code) { _, value in
+                    code = String(value.filter(\.isNumber).prefix(6))
+                }
+
+            PrimaryButton(
+                title: appState.isBusy ? "Verifying…" : "Verify & Complete KYC",
+                loading: appState.isBusy,
+                disabled: code.count != 6 || sending
+            ) {
+                Task {
+                    if await appState.verifyKYCEmail(code: code) {
+                        onVerified()
+                    }
+                }
+            }
+
+            Button(appState.isBusy || sending ? "Sending…" : "Resend code") {
+                Task { await requestCode(isResend: true) }
+            }
+            .font(.limu(size: 13, weight: .semibold))
+            .foregroundStyle(LimuColors.copper)
+            .buttonStyle(.plain)
+            .disabled(appState.isBusy || sending)
+
+            if resent {
+                Label("A new code has been sent", systemImage: "checkmark.circle.fill")
+                    .font(.limu(size: 11, weight: .medium))
+                    .foregroundStyle(LimuColors.success)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 24)
+        .background(LimuColors.cream)
+        .presentationDetents([.medium, .large])
+        .task { await requestCode(isResend: false) }
+    }
+
+    private func requestCode(isResend: Bool) async {
+        sending = true
+        defer { sending = false }
+        if let response = await appState.requestKYCEmailVerification() {
+            sendFailed = false
+            if response.alreadyVerified == true {
+                onVerified()
+                return
+            }
+            if isResend {
+                code = ""
+                resent = true
+            }
+        } else {
+            sendFailed = true
+        }
     }
 }
