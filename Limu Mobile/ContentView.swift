@@ -37,7 +37,7 @@ struct ContentView: View {
         .environment(\.font, .limu(size: 14))
         .background(LimuColors.cream)
         .tint(LimuColors.copper)
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(.light)
         .task { await appState.bootstrap() }
         .onOpenURL(perform: handleDeepLink)
         .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
@@ -65,6 +65,14 @@ struct ContentView: View {
     }
 
     private var mainApp: some View {
+        VStack(spacing: 0) {
+            LimuTopNav(unreadCount: appState.unreadCount) { showingNotifications = true }
+            mainContent
+        }
+        .background(LimuColors.cream)
+    }
+
+    private var mainContent: some View {
         Group {
             if showingNotifications {
                 NotificationsView(
@@ -76,10 +84,10 @@ struct ContentView: View {
                 TabView(selection: guardedTabSelection) {
                     Tab("Home", systemImage: AppTab.home.icon, value: AppTab.home) {
                         HomeView(
-                            unreadCount: appState.unreadCount,
                             notifications: appState.notifications,
                             onNavigate: navigate,
-                            onNotifications: { showingNotifications = true }
+                            onNotifications: { showingNotifications = true },
+                            onOpenKYC: openKYC
                         )
                     }
                     Tab("Cargo", systemImage: AppTab.cargo.icon, value: AppTab.cargo) {
@@ -211,7 +219,7 @@ private struct KYCRestrictedView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            AppHeader {
+            PageHeader {
                 Text(feature)
                     .font(.limu(size: 18, weight: .bold))
             }

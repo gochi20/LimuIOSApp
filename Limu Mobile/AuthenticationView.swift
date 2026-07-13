@@ -21,9 +21,15 @@ struct AuthenticationView: View {
     @State private var confirmNewPassword = ""
     @State private var resetTokenFromLink = false
     @State private var verificationEmail = ""
+    @State private var verificationPhone = ""
+    @State private var verificationIdentifier = ""
+    @State private var verificationChannel = "whatsapp"
     @State private var verificationCode = ""
     @State private var verificationResent = false
-    @State private var verificationEmailSent = true
+    @State private var verificationCodeSent = true
+    @State private var verificationLinkedAccount = false
+
+    private var isWhatsAppChannel: Bool { verificationChannel == "whatsapp" }
 
     @Binding private var resetLinkToken: String?
     let onLogin: () -> Void
@@ -159,7 +165,7 @@ struct AuthenticationView: View {
                 mode = .register
                 verificationCode = ""
                 verificationResent = false
-                verificationEmailSent = true
+                verificationCodeSent = true
                 appState.clearError()
             } label: {
                 Label("Registration", systemImage: "chevron.left")
@@ -168,7 +174,7 @@ struct AuthenticationView: View {
             }
             .buttonStyle(.plain)
             .padding(.bottom, 20)
-            Text("Verify Your Email")
+            Text(isWhatsAppChannel ? "Verify Your Number" : "Verify Your Email")
                 .font(.limu(size: 22, weight: .bold))
             Text("One quick step to secure your account")
                 .font(.limu(size: 13))
@@ -246,11 +252,18 @@ struct AuthenticationView: View {
                         if await appState.requestAccountClaim(identifier: email) { mode = .claim }
                     } else if appState.lastErrorCode == "EMAIL_VERIFICATION_REQUIRED" {
                         verificationEmail = email
+                        verificationPhone = ""
+                        verificationIdentifier = email
+                        verificationChannel = "whatsapp"
+                        verificationLinkedAccount = false
                         verificationCode = ""
                         verificationResent = false
-                        verificationEmailSent = true
+                        verificationCodeSent = false
                         appState.clearError()
                         mode = .verifyEmail
+                        Task {
+                            verificationCodeSent = await appState.resendRegistrationVerification(identifier: email, channel: "whatsapp")
+                        }
                     }
                 }
             }
@@ -281,9 +294,13 @@ struct AuthenticationView: View {
                 Task {
                     if let registration = await appState.register(firstName: firstName, lastName: lastName, email: email, phone: phone, password: password, clientType: clientType, businessName: businessName, location: location) {
                         verificationEmail = registration.email
+                        verificationPhone = registration.phone ?? phone
+                        verificationIdentifier = registration.identifier ?? registration.email
+                        verificationChannel = registration.channel ?? "whatsapp"
+                        verificationLinkedAccount = registration.accountLinked ?? false
                         verificationCode = ""
                         verificationResent = false
-                        verificationEmailSent = registration.emailSent
+                        verificationCodeSent = (registration.whatsappSent ?? false) || registration.emailSent
                         mode = .verifyEmail
                     }
                 }
@@ -322,13 +339,13 @@ struct AuthenticationView: View {
 
     private var verificationForm: some View {
         VStack(spacing: 18) {
-            Image(systemName: "envelope.badge")
+            Image(systemName: isWhatsAppChannel ? "message.badge" : "envelope.badge")
                 .font(.system(size: 34, weight: .semibold))
                 .foregroundStyle(LimuColors.copper)
                 .accessibilityHidden(true)
 
             VStack(spacing: 6) {
-                Text("Check your inbox")
+                Text(isWhatsAppChannel ? "Check your WhatsApp" : "Check your inbox")
                     .font(.limu(size: 18, weight: .bold))
                     .foregroundStyle(LimuColors.ink)
                 Text(verificationMessage)
@@ -338,8 +355,23 @@ struct AuthenticationView: View {
                     .lineSpacing(3)
             }
 
-            if !verificationEmailSent {
-                Label("We couldn't send the email. Tap Resend code to try again.", systemImage: "exclamationmark.triangle.fill")
+            if verificationLinkedAccount {
+                Label("We found your existing Limu account. Verifying links this app to it, so your cargo and order history comes with you.", systemImage: "person.crop.circle.badge.checkmark")
+                    .font(.limu(size: 11, weight: .medium))
+                    .foregroundStyle(LimuColors.success)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(LimuColors.successWash)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+
+            if !verificationCodeSent {
+                Label(
+                    isWhatsAppChannel
+                        ? "We couldn't send the WhatsApp code. Resend it, or use your email instead."
+                        : "We couldn't send the email. Tap Resend code to try again.",
+                    systemImage: "exclamationmark.triangle.fill"
+                )
                     .font(.limu(size: 11, weight: .medium))
                     .foregroundStyle(LimuColors.warning)
                     .padding(10)
@@ -360,12 +392,15 @@ struct AuthenticationView: View {
             }
 
             PrimaryButton(
-                title: appState.isBusy ? "Verifying…" : "Verify Email",
+                title: appState.isBusy ? "Verifying…" : (isWhatsAppChannel ? "Verify Number" : "Verify Email"),
                 loading: appState.isBusy,
                 disabled: verificationCode.count != 6
             ) {
                 Task {
-                    if await appState.verifyRegistrationEmail(identifier: verificationEmail, code: verificationCode) {
+                    let verified = isWhatsAppChannel
+                        ? await appState.verifyRegistrationPhone(identifier: verificationIdentifier, code: verificationCode)
+                        : await appState.verifyRegistrationEmail(identifier: verificationIdentifier, code: verificationCode)
+                    if verified {
                         onLogin()
                     }
                 }
@@ -377,15 +412,31 @@ struct AuthenticationView: View {
                     .foregroundStyle(LimuColors.muted)
                 Button(appState.isBusy ? "Sending…" : "Resend code") {
                     Task {
-                        if await appState.resendRegistrationVerification(identifier: verificationEmail) {
+                        if await appState.resendRegistrationVerification(identifier: verificationIdentifier, channel: verificationChannel) {
                             verificationCode = ""
                             verificationResent = true
-                            verificationEmailSent = true
+                            verificationCodeSent = true
                         }
                     }
                 }
                 .font(.limu(size: 13, weight: .semibold))
                 .foregroundStyle(LimuColors.copper)
+                .buttonStyle(.plain)
+                .disabled(appState.isBusy)
+
+                Button(isWhatsAppChannel ? "Can't get WhatsApp messages? Send the code to my email" : "Send the code to my WhatsApp instead") {
+                    Task {
+                        let newChannel = isWhatsAppChannel ? "email" : "whatsapp"
+                        if await appState.resendRegistrationVerification(identifier: verificationIdentifier, channel: newChannel) {
+                            verificationChannel = newChannel
+                            verificationCode = ""
+                            verificationResent = true
+                            verificationCodeSent = true
+                        }
+                    }
+                }
+                .font(.limu(size: 12, weight: .semibold))
+                .foregroundStyle(LimuColors.secondary)
                 .buttonStyle(.plain)
                 .disabled(appState.isBusy)
 
@@ -402,6 +453,12 @@ struct AuthenticationView: View {
     }
 
     private var verificationMessage: String {
+        if isWhatsAppChannel {
+            if !verificationPhone.isEmpty {
+                return "We sent a verification code to your WhatsApp on\n\(verificationPhone)"
+            }
+            return "We sent a verification code to the WhatsApp number on your account."
+        }
         if verificationEmail.contains("@") {
             return "We sent a verification code to\n\(verificationEmail)"
         }

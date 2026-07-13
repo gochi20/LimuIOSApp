@@ -14,6 +14,10 @@
 	<array>
 		<string>remote-notification</string>
 	</array>
+	<key>UIViewControllerBasedStatusBarAppearance</key>
+	<false/>
+	<key>UIStatusBarStyle</key>
+	<string>UIStatusBarStyleLightContent</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

@@ -1,5 +1,87 @@
 import Foundation
 
+private extension KeyedDecodingContainer {
+    func limuString(_ key: Key, default defaultValue: String = "") -> String {
+        if let value = try? decodeIfPresent(String.self, forKey: key) {
+            return value
+        }
+        if let value = try? decodeIfPresent(Int.self, forKey: key) {
+            return String(value)
+        }
+        if let value = try? decodeIfPresent(Double.self, forKey: key) {
+            return String(value)
+        }
+        if let value = try? decodeIfPresent(Bool.self, forKey: key) {
+            return value ? "true" : "false"
+        }
+        return defaultValue
+    }
+
+    func limuOptionalString(_ key: Key) -> String? {
+        let value = limuString(key).trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
+    }
+
+    func limuInt(_ key: Key, default defaultValue: Int = 0) -> Int {
+        if let value = try? decodeIfPresent(Int.self, forKey: key) {
+            return value
+        }
+        if let value = try? decodeIfPresent(Double.self, forKey: key) {
+            return Int(value)
+        }
+        if let value = try? decodeIfPresent(String.self, forKey: key) {
+            return Int(value.trimmingCharacters(in: .whitespacesAndNewlines)) ?? defaultValue
+        }
+        return defaultValue
+    }
+
+    func limuDouble(_ key: Key, default defaultValue: Double = 0) -> Double {
+        if let value = try? decodeIfPresent(Double.self, forKey: key) {
+            return value
+        }
+        if let value = try? decodeIfPresent(Int.self, forKey: key) {
+            return Double(value)
+        }
+        if let value = try? decodeIfPresent(String.self, forKey: key) {
+            return Double(value.trimmingCharacters(in: .whitespacesAndNewlines)) ?? defaultValue
+        }
+        return defaultValue
+    }
+
+    func limuBool(_ key: Key, default defaultValue: Bool = false) -> Bool {
+        if let value = try? decodeIfPresent(Bool.self, forKey: key) {
+            return value
+        }
+        if let value = try? decodeIfPresent(Int.self, forKey: key) {
+            return value != 0
+        }
+        if let value = try? decodeIfPresent(String.self, forKey: key) {
+            switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "1", "true", "yes", "y":
+                return true
+            case "0", "false", "no", "n":
+                return false
+            default:
+                return defaultValue
+            }
+        }
+        return defaultValue
+    }
+
+    func limuStringArray(_ key: Key) -> [String] {
+        if let values = try? decodeIfPresent([String].self, forKey: key) {
+            return values
+        }
+        if let value = try? decodeIfPresent(String.self, forKey: key) {
+            return value
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        }
+        return []
+    }
+}
+
 struct AuthPayloadDTO: Decodable {
     let client: ProfileDTO
     let session: SessionDTO
@@ -10,6 +92,18 @@ struct RegistrationPayloadDTO: Decodable {
     let email: String
     let emailSent: Bool
     let expiresAt: String
+    let testCode: String?
+    let channel: String?
+    let phone: String?
+    let whatsappSent: Bool?
+    let identifier: String?
+    let accountLinked: Bool?
+}
+
+struct KYCEmailVerificationRequestDTO: Decodable {
+    let alreadyVerified: Bool?
+    let email: String?
+    let expiresAt: String?
     let testCode: String?
 }
 
@@ -50,7 +144,6 @@ struct DashboardDTO: Decodable {
     let metrics: DashboardMetricsDTO
     let activeCargo: [CargoDTO]
     let shipments: [ShipmentDTO]
-    let invoices: [InvoiceDTO]?
     let orderForms: [OrderFormDTO]?
     let notifications: [NotificationDTO]
 }
@@ -84,7 +177,6 @@ struct CargoDTO: Decodable {
     let consignmentValue: Double
     let packages: [CargoPackageDTO]?
     let timeline: [TimelineDTO]?
-    let invoice: CargoInvoiceDTO?
 
     var model: Cargo {
         Cargo(
@@ -102,18 +194,9 @@ struct CargoDTO: Decodable {
             readyForCollection: readyForCollection,
             collectionLocation: collectionLocation,
             notes: notes,
-            checkedPackages: checkedPackageCount,
-            invoiceAPIID: invoice?.id
+            checkedPackages: checkedPackageCount
         )
     }
-}
-
-struct CargoInvoiceDTO: Decodable {
-    let id: Int
-    let status: String
-    let total: Double
-    let balance: Double
-    let currency: String?
 }
 
 struct CargoPackageDTO: Decodable {
@@ -228,6 +311,45 @@ struct OrderFormDTO: Decodable {
     let timeline: [OrderFormTimelineStepDTO]?
     let statusUpdates: [OrderFormStatusUpdateDTO]?
 
+    enum CodingKeys: String, CodingKey {
+        case id, number, title, status, orderDate, createdAt, orderType, orderTypeLabel, orderTypeRate, currency
+        case clientName, assignedTo, preparedBy, shipmentReference, totalProductValue, totalLocalCourier, agencyFee
+        case grandTotal, itemCount, approvedItemCount, declinedItemCount, canClientReview, clientViewUrl
+        case items, timeline, statusUpdates
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = container.limuInt(.id)
+        number = container.limuString(.number, default: "OF-\(id)")
+        title = container.limuString(.title)
+        status = container.limuString(.status, default: "Draft")
+        orderDate = container.limuOptionalString(.orderDate)
+        createdAt = container.limuOptionalString(.createdAt)
+        let decodedOrderType = container.limuString(.orderType, default: "full")
+        orderType = decodedOrderType
+        orderTypeLabel = container.limuOptionalString(.orderTypeLabel)
+        orderTypeRate = container.limuDouble(.orderTypeRate, default: decodedOrderType == "partial" ? 5 : 7)
+        currency = container.limuOptionalString(.currency)
+        clientName = container.limuString(.clientName)
+        assignedTo = container.limuString(.assignedTo)
+        preparedBy = container.limuString(.preparedBy)
+        shipmentReference = container.limuString(.shipmentReference)
+        totalProductValue = container.limuDouble(.totalProductValue)
+        totalLocalCourier = container.limuDouble(.totalLocalCourier)
+        agencyFee = container.limuDouble(.agencyFee)
+        grandTotal = container.limuDouble(.grandTotal)
+        itemCount = container.limuInt(.itemCount)
+        approvedItemCount = container.limuInt(.approvedItemCount)
+        declinedItemCount = container.limuInt(.declinedItemCount)
+        let lowerStatus = status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        canClientReview = container.limuBool(.canClientReview, default: ["draft", "client review"].contains(lowerStatus))
+        clientViewUrl = container.limuOptionalString(.clientViewUrl)
+        items = try? container.decodeIfPresent([OrderFormItemDTO].self, forKey: .items)
+        timeline = try? container.decodeIfPresent([OrderFormTimelineStepDTO].self, forKey: .timeline)
+        statusUpdates = try? container.decodeIfPresent([OrderFormStatusUpdateDTO].self, forKey: .statusUpdates)
+    }
+
     var model: OrderForm {
         OrderForm(
             apiID: id,
@@ -259,6 +381,24 @@ struct OrderFormDTO: Decodable {
     }
 }
 
+struct OrderFormListDTO: Decodable {
+    let items: [OrderFormDTO]
+
+    private enum CodingKeys: String, CodingKey {
+        case items
+        case orderForms
+    }
+
+    init(from decoder: Decoder) throws {
+        if let items = try? [OrderFormDTO](from: decoder) {
+            self.items = items
+            return
+        }
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        items = (try? container.decodeIfPresent([OrderFormDTO].self, forKey: .items)) ?? (try? container.decodeIfPresent([OrderFormDTO].self, forKey: .orderForms)) ?? []
+    }
+}
+
 struct OrderFormItemDTO: Decodable {
     let id: Int
     let status: String
@@ -275,6 +415,30 @@ struct OrderFormItemDTO: Decodable {
     let trackingNumber: String
     let photoUrls: [String]
     let createdAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, status, productName, categoryName, description, productLink, size, quantity, unitPrice
+        case productValue, localShipping, lineTotal, trackingNumber, photoUrls, createdAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = container.limuInt(.id)
+        status = container.limuString(.status, default: "Draft")
+        productName = container.limuString(.productName)
+        categoryName = container.limuString(.categoryName)
+        description = container.limuString(.description)
+        productLink = container.limuOptionalString(.productLink)
+        size = container.limuString(.size)
+        quantity = container.limuInt(.quantity)
+        unitPrice = container.limuDouble(.unitPrice)
+        productValue = container.limuDouble(.productValue)
+        localShipping = container.limuDouble(.localShipping)
+        lineTotal = container.limuDouble(.lineTotal, default: productValue + localShipping)
+        trackingNumber = container.limuString(.trackingNumber)
+        photoUrls = container.limuStringArray(.photoUrls)
+        createdAt = container.limuOptionalString(.createdAt)
+    }
 
     var model: OrderFormItem {
         OrderFormItem(
@@ -305,6 +469,19 @@ struct OrderFormStatusUpdateDTO: Decodable {
     let changedBy: String
     let createdAt: String?
 
+    enum CodingKeys: String, CodingKey {
+        case id, status, note, changedBy, createdAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = container.limuString(.id)
+        status = container.limuString(.status, default: "Update")
+        note = container.limuString(.note)
+        changedBy = container.limuString(.changedBy)
+        createdAt = container.limuOptionalString(.createdAt)
+    }
+
     var model: OrderFormStatusUpdate {
         OrderFormStatusUpdate(id: id, status: status, note: note, changedBy: changedBy, createdAt: createdAt ?? "—")
     }
@@ -319,6 +496,21 @@ struct OrderFormTimelineStepDTO: Decodable {
     let changedBy: String
     let createdAt: String?
 
+    enum CodingKeys: String, CodingKey {
+        case id, label, reached, active, note, changedBy, createdAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = container.limuString(.id)
+        label = container.limuString(.label)
+        reached = container.limuBool(.reached)
+        active = container.limuBool(.active)
+        note = container.limuString(.note)
+        changedBy = container.limuString(.changedBy)
+        createdAt = container.limuOptionalString(.createdAt)
+    }
+
     var model: OrderFormTimelineStep {
         OrderFormTimelineStep(id: id, label: label, reached: reached, active: active, note: note, changedBy: changedBy, createdAt: createdAt ?? "—")
     }
@@ -327,72 +519,6 @@ struct OrderFormTimelineStepDTO: Decodable {
 struct OrderFormActionResultDTO: Decodable {
     let order: OrderFormDTO
     let supervisorNotified: Bool?
-}
-
-struct InvoiceDTO: Decodable {
-    let id: Int
-    let number: String
-    let status: String
-    let invoiceDate: String?
-    let total: Double
-    let balance: Double
-    let discount: Double
-    let currency: String?
-    let shipmentId: Int?
-    let shipmentName: String
-    let cargoId: Int?
-    let trackingNumber: String
-    let documentUrl: String?
-    let items: [InvoiceItemDTO]?
-    let payments: [PaymentDTO]?
-
-    var model: Invoice {
-        let percentage = total > 0 ? Int((discount / total * 100).rounded()) : 0
-        return Invoice(
-            apiID: id,
-            id: number,
-            status: status,
-            date: invoiceDate ?? "—",
-            total: total,
-            balance: balance,
-            discount: discount,
-            discountPercentage: percentage,
-            shipmentID: shipmentName.isEmpty ? shipmentId.map { "SHP-\($0)" } ?? "—" : shipmentName,
-            cargoID: trackingNumber.isEmpty ? cargoId.map { "CGO-\($0)" } ?? "—" : trackingNumber,
-            currency: LimuCurrency.code(currency),
-            items: (items ?? []).map(\.model),
-            payments: (payments ?? []).map(\.model),
-            documentURL: documentUrl.flatMap(URL.init(string:))
-        )
-    }
-}
-
-struct InvoiceItemDTO: Decodable {
-    let id: Int
-    let label: String
-    let quantity: Int
-    let unitAmount: Double
-    let lineTotal: Double
-
-    var model: InvoiceItem { InvoiceItem(id: String(id), label: label, quantity: quantity, total: lineTotal) }
-}
-
-struct PaymentDTO: Decodable {
-    let id: Int
-    let invoiceId: Int
-    let amount: Double
-    let currency: String?
-    let status: String
-    let rawStatus: String
-    let proofUrl: String?
-    let paymentDate: String?
-    let reviewedAt: String?
-    let transactionId: String
-    let notes: String?
-
-    var model: Payment {
-        Payment(id: String(id), amount: amount, status: status, date: paymentDate ?? "—", transactionID: transactionId, currency: LimuCurrency.code(currency))
-    }
 }
 
 struct NotificationDTO: Decodable {
@@ -438,6 +564,161 @@ struct KYCRecordDTO: Decodable {
 struct CategoryDTO: Decodable, Identifiable, Hashable {
     let id: Int
     let name: String
+}
+
+struct ShipmentPriceListDTO: Decodable {
+    let lastUpdated: String?
+    let customsLastUpdated: String?
+    let shippingLastUpdated: String?
+    let customs: [CustomsPriceRowDTO]?
+    let shipping: ShippingPriceListSectionDTO?
+    let airCargo: [AirCargoPriceRowDTO]?
+    let notes: [String]?
+
+    var model: ShipmentPriceList {
+        let policy = shipping?.policy?.model ?? ShipmentPricePolicy(
+            weightThresholdPerCbm: 400,
+            baseCurrency: "USD",
+            counterCurrency: "RMB",
+            usdToRmbRate: 7,
+            exchangeRateSource: "Saved portal rate",
+            exchangeRateAsOf: nil,
+            exchangeRateError: nil,
+            updatedAt: nil
+        )
+        let customsItems = (customs ?? []).map(\.model)
+        let shippingItems = (shipping?.tiers ?? []).map(\.model)
+        let airItems = (airCargo ?? []).map(\.model)
+
+        return ShipmentPriceList(
+            lastUpdated: lastUpdated,
+            customsLastUpdated: customsLastUpdated,
+            shippingLastUpdated: shippingLastUpdated,
+            policy: policy,
+            items: customsItems + shippingItems + airItems,
+            notes: notes ?? []
+        )
+    }
+}
+
+struct CustomsPriceRowDTO: Decodable {
+    let id: String
+    let category: String
+    let pricePerCbm: Double
+    let currency: String
+    let updatedAt: String?
+
+    var model: ShipmentPriceItem {
+        ShipmentPriceItem(
+            id: id,
+            category: "Customs Fees",
+            service: category,
+            route: "Customs price per CBM",
+            rate: pricePerCbm,
+            currency: LimuCurrency.code(currency),
+            unit: "CBM",
+            updatedAt: updatedAt,
+            note: "Configured cargo-content customs fee.",
+            icon: "doc.text.fill"
+        )
+    }
+}
+
+struct ShippingPriceListSectionDTO: Decodable {
+    let policy: ShippingPricePolicyDTO?
+    let tiers: [ShippingPriceTierDTO]?
+}
+
+struct ShippingPricePolicyDTO: Decodable {
+    let weightThresholdPerCbm: Double
+    let baseCurrency: String
+    let counterCurrency: String
+    let usdToRmbRate: Double
+    let exchangeRateSource: String
+    let exchangeRateAsOf: String?
+    let exchangeRateError: String?
+    let updatedAt: String?
+
+    var model: ShipmentPricePolicy {
+        ShipmentPricePolicy(
+            weightThresholdPerCbm: weightThresholdPerCbm,
+            baseCurrency: LimuCurrency.code(baseCurrency),
+            counterCurrency: LimuCurrency.code(counterCurrency),
+            usdToRmbRate: usdToRmbRate,
+            exchangeRateSource: exchangeRateSource,
+            exchangeRateAsOf: exchangeRateAsOf,
+            exchangeRateError: exchangeRateError,
+            updatedAt: updatedAt
+        )
+    }
+}
+
+struct ShippingPriceTierDTO: Decodable {
+    let id: String
+    let code: String
+    let label: String
+    let policy: String
+    let pricePerCbm: Double?
+    let currency: String
+    let convertedPricePerCbm: Double?
+    let convertedCurrency: String
+    let updatedAt: String?
+    let updatedBy: String?
+
+    var model: ShipmentPriceItem {
+        ShipmentPriceItem(
+            id: id,
+            category: "Shipping Fees",
+            service: label,
+            route: policy,
+            rate: pricePerCbm,
+            currency: LimuCurrency.code(currency),
+            unit: "CBM",
+            convertedRate: convertedPricePerCbm,
+            convertedCurrency: LimuCurrency.code(convertedCurrency),
+            updatedAt: updatedAt,
+            note: note,
+            icon: icon
+        )
+    }
+
+    private var icon: String {
+        switch code {
+        case "heavy": "scalemass.fill"
+        case "dangerous": "exclamationmark.triangle.fill"
+        default: "shippingbox.fill"
+        }
+    }
+
+    private var note: String {
+        if let updatedBy, !updatedBy.isEmpty {
+            return "Shipping fee per CBM. Updated by \(updatedBy)."
+        }
+        return "Shipping fee per CBM."
+    }
+}
+
+struct AirCargoPriceRowDTO: Decodable {
+    let id: String
+    let label: String
+    let ratePerKg: Double
+    let currency: String
+    let updatedAt: String?
+
+    var model: ShipmentPriceItem {
+        ShipmentPriceItem(
+            id: id,
+            category: "Air Cargo",
+            service: label,
+            route: "Air cargo fee per kg",
+            rate: ratePerKg,
+            currency: LimuCurrency.code(currency),
+            unit: "kg",
+            updatedAt: updatedAt,
+            note: "Portal air-cargo guidance rate.",
+            icon: "airplane"
+        )
+    }
 }
 
 struct KYCSubmissionDTO: Codable {
