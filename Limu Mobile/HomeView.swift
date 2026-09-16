@@ -91,9 +91,9 @@ struct HomeView: View {
 
     private var metrics: some View {
         HStack(spacing: 10) {
-            metricCard(icon: "shippingbox.fill", tint: LimuColors.copperWash, value: "\(appState.dashboard?.metrics.activeCargoCount ?? activeCargo.count)", label: "Active Cargo") { onNavigate(.cargo) }
-            metricCard(icon: "storefront.fill", tint: LimuColors.successWash, value: "\(appState.dashboard?.metrics.readyForCollectionCount ?? appState.cargo.filter(\.readyForCollection).count)", label: "For Collection") { onNavigate(.cargo) }
-            metricCard(icon: "list.clipboard.fill", tint: LimuColors.dangerWash, value: "\(reviewOrderForms.count)", label: "For Review") { onNavigate(.orderForms) }
+            metricCard(icon: "shippingbox.fill", gradient: [LimuColors.sunsetOrange, LimuColors.orange], value: "\(appState.dashboard?.metrics.activeCargoCount ?? activeCargo.count)", label: "Active Cargo") { onNavigate(.cargo) }
+            metricCard(icon: "storefront.fill", gradient: [LimuColors.success, Color(hex: "22C55E")], value: "\(appState.dashboard?.metrics.readyForCollectionCount ?? appState.cargo.filter(\.readyForCollection).count)", label: "For Collection") { onNavigate(.cargo) }
+            metricCard(icon: "list.clipboard.fill", gradient: [LimuColors.danger, Color(hex: "F87171")], value: "\(reviewOrderForms.count)", label: "For Review") { onNavigate(.orderForms) }
         }
         .padding(.horizontal, 16)
         .offset(y: -14)
@@ -106,13 +106,11 @@ struct HomeView: View {
         return profile.fullName
     }
 
-    private func metricCard(icon: String, tint: Color, value: String, label: String, action: @escaping () -> Void) -> some View {
+    private func metricCard(icon: String, gradient: [Color], value: String, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            LimuCard(padding: 10) {
+            AccentCard(accentColor: gradient.first ?? LimuColors.copper, padding: 10) {
                 VStack(alignment: .leading, spacing: 0) {
-                    BrandCircleSymbol(systemName: icon, diameter: 32, symbolSize: 14)
-                        .background(tint)
-                        .clipShape(Circle())
+                    GradientIconTile(systemName: icon, colors: gradient, diameter: 32, symbolSize: 14)
                         .padding(.bottom, 8)
                     Text(value)
                         .font(.limu(size: value.count > 4 ? 15 : 16, weight: .heavy))
@@ -131,7 +129,8 @@ struct HomeView: View {
 
     private func homeSection<Content: View>(_ title: String, seeAll: @escaping () -> Void, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
+            HStack(spacing: 8) {
+                SectionAccentBar()
                 Text(title)
                     .font(.limu(size: 13, weight: .bold))
                     .foregroundStyle(LimuColors.ink)
@@ -148,7 +147,7 @@ struct HomeView: View {
     }
 
     private func cargoPreview(_ cargo: Cargo) -> some View {
-        LimuCard(padding: 16) {
+        AccentCard(accentColor: statusAccentColor(cargo.status)) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(cargo.id).font(.limu(size: 13, weight: .bold)).foregroundStyle(LimuColors.ink)
@@ -177,7 +176,7 @@ struct HomeView: View {
     }
 
     private func shipmentPreview(_ shipment: Shipment) -> some View {
-        LimuCard(padding: 16) {
+        AccentCard(accentColor: statusAccentColor(shipment.status)) {
             HStack {
                 Text(shipment.name).font(.limu(size: 13, weight: .bold)).foregroundStyle(LimuColors.ink)
                 Spacer()
@@ -212,7 +211,7 @@ struct HomeView: View {
     }
 
     private func orderFormPreview(_ orderForm: OrderForm) -> some View {
-        LimuCard(padding: 16) {
+        AccentCard(accentColor: statusAccentColor(orderForm.status)) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(orderForm.id).font(.limu(size: 13, weight: .bold)).foregroundStyle(LimuColors.ink)
@@ -230,9 +229,9 @@ struct HomeView: View {
     }
 
     private func notificationPreview(_ notification: AppNotification) -> some View {
-        LimuCard(padding: 14) {
+        AccentCard(accentColor: LimuColors.copper, padding: 14) {
             HStack(alignment: .top, spacing: 10) {
-                Circle().fill(LimuColors.copper).frame(width: 8, height: 8).padding(.top, 4)
+                GradientIconTile(systemName: "bell.fill", colors: [LimuColors.sunsetOrange, LimuColors.yellow], diameter: 30, symbolSize: 13)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(notification.title).font(.limu(size: 12, weight: .bold)).foregroundStyle(LimuColors.ink)
                     Text(notification.message).font(.limu(size: 11)).foregroundStyle(LimuColors.secondary).lineSpacing(2)
@@ -240,6 +239,5 @@ struct HomeView: View {
                 }
             }
         }
-        .overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 2).fill(LimuColors.copper).frame(width: 3).padding(.vertical, 2) }
     }
 }

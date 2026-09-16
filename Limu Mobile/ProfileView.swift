@@ -89,7 +89,10 @@ struct ProfileView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(appState.profile?.fullName ?? "Limu Client").font(.limu(size: 17, weight: .bold))
                     Text(appState.profile?.email ?? "").font(.limu(size: 12)).foregroundStyle(LimuColors.peach)
-                    Text("\(appState.profile?.customerCategory ?? "Client") Client")
+                    // appState.profile?.customerCategory ?? "Client" would double up on the literal
+                    // "Client" suffix below when there's no category (nil profile, or a profile with
+                    // no category set) — build the label instead of the plain default-then-append.
+                    Text((appState.profile?.customerCategory).map { "\($0) Client" } ?? "Client")
                         .font(.limu(size: 10, weight: .bold)).foregroundStyle(LimuColors.peach)
                         .padding(.horizontal, 8).padding(.vertical, 3)
                         .background(LimuColors.copper.opacity(0.25)).clipShape(Capsule())

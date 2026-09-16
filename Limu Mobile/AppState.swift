@@ -139,29 +139,19 @@ final class AppState: ObservableObject {
         lastErrorCode = nil
     }
 
-    func beginPasswordResetFromLink() {
-        api.clearSession()
-        isAuthenticated = false
-        isCheckingSession = false
-        profile = nil
-        dashboard = nil
-        cargo = []
-        shipments = []
-        invoices = []
-        orderForms = []
-        notifications = []
-        clearError()
-    }
-
     func requestPasswordReset(identifier: String) async -> Bool {
         await runBusy {
             try await api.send("auth/forgot-password.php", body: ["identifier": identifier], authenticated: false)
         }
     }
 
-    func completePasswordReset(token: String, password: String) async -> Bool {
+    func completePasswordReset(identifier: String, code: String, password: String) async -> Bool {
         await runBusy {
-            try await api.send("auth/reset-password.php", body: ["token": token, "password": password], authenticated: false)
+            try await api.send(
+                "auth/reset-password.php",
+                body: ["identifier": identifier, "code": code, "password": password],
+                authenticated: false
+            )
         }
     }
 
