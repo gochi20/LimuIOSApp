@@ -31,6 +31,10 @@ These V4 routes are now available on the live server and are wired into the app:
 2. `POST /auth/resend-verification.php`
 3. `GET /categories/get.php`
 
+`DELETE /profile/delete.php` (account deletion, required by App Store Review Guideline 5.1.1(v)) is
+implemented in the portal repository but **not yet deployed**. Contract and rollout notes in
+`ACCOUNT-DELETION.md`.
+
 ### Response improvements
 
 1. **Shipment route fields**

@@ -33,6 +33,12 @@ enum LimuColors {
     static let danger = Color(hex: "B91C1C")
 }
 
+enum LimuLinks {
+    /// Published privacy policy. The same URL is declared in App Store Connect —
+    /// keep the two in sync, Apple rejects a listing whose policy link is dead.
+    static let privacyPolicy = URL(string: "https://limu.co.mw/policy")!
+}
+
 extension Font {
     static func limu(size: CGFloat, weight: Weight = .regular) -> Font {
         let name: String
